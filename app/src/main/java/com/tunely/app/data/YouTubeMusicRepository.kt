@@ -43,6 +43,7 @@ class YouTubeMusicRepository {
         title = name,
         artist = uploaderName?.removeSuffix(" - Topic") ?: "Unknown",
         durationMs = duration * 1000,
-        artworkUrl = thumbnails.maxByOrNull { it.width }?.url
+        artworkUrl = thumbnails.maxByOrNull { it.width }?.url,
+        source = "youtube_music"
     )
 }

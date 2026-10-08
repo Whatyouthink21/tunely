@@ -15,10 +15,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private val tunely = app as TunelyApp
     private val yt = YouTubeMusicRepository()
+    private val sc = SoundCloudRepository()
+    private val piped = PipedRepository(tunely.http)
     private val meta = MetadataRepository(tunely.http)
     private val lyricsRepo = LyricsRepository(tunely.http)
     private val dao = tunely.db.dao()
 
+    val settings = tunely.settings
     val player = PlayerController(app)
     val playerState = player.state
 
@@ -28,6 +31,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val lyrics = MutableStateFlow<Lyrics?>(null)
     val library = dao.library().stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
     val recent = dao.recentlyPlayed().stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+    val playlists = dao.playlists().stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+    val searchSource = MutableStateFlow("all")
+
+    // Sleep timer
+    private val _sleepTimer = MutableStateFlow(SleepTimerState())
+    val sleepTimer: StateFlow<SleepTimerState> = _sleepTimer.asStateFlow()
+    private var sleepJob: Job? = null
 
     private var searchJob: Job? = null
     private var lastTrackId: String? = null
@@ -47,8 +57,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 lyrics.value = lyricsRepo.load(t)
             }
         }
+        // Apply playback speed whenever setting changes
+        viewModelScope.launch {
+            settings.playbackSpeed.collect { speed ->
+                player.setPlaybackSpeed(speed)
+            }
+        }
     }
 
+    /**
+     * Search across all enabled sources. "all" merges results; otherwise
+     * restricts to a specific provider.
+     */
     fun search(q: String) {
         searchJob?.cancel()
         if (q.isBlank()) { searchResults.value = emptyList(); return }
@@ -56,19 +76,43 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             delay(350)
             searching.value = true
             message.value = null
-            searchResults.value = runCatching { yt.searchSongs(q) }
-                .onFailure { message.value = "Search failed: ${it.javaClass.simpleName}: ${it.message}" }
-                .getOrDefault(emptyList())
-            if (searchResults.value.isEmpty() && message.value == null) message.value = "No results found"
+
+            val useYt = settings.sourceYoutube.value || settings.sourceYtmusic.value
+            val useSc = settings.sourceSoundcloud.value
+            val usePiped = settings.sourcePiped.value
+            val source = searchSource.value
+
+            val results = mutableListOf<Track>()
+            try {
+                if ((source == "all" || source == "youtube_music") && useYt) {
+                    results += runCatching { yt.searchSongs(q) }.getOrDefault(emptyList())
+                }
+                if ((source == "all" || source == "soundcloud") && useSc) {
+                    results += runCatching { sc.search(q) }.getOrDefault(emptyList())
+                }
+                if ((source == "all" || source == "piped") && usePiped) {
+                    results += runCatching { piped.search(q) }.getOrDefault(emptyList())
+                }
+            } catch (e: Exception) {
+                message.value = "Search failed: ${e.javaClass.simpleName}: ${e.message}"
+            }
+
+            searchResults.value = results
+            if (results.isEmpty() && message.value == null) message.value = "No results found"
             searching.value = false
-            // Upgrade artwork/metadata in the background.
-            searchResults.value = searchResults.value.map { meta.enrich(it) }
+
+            // Enrich YouTube results with iTunes metadata in the background
+            searchResults.value = searchResults.value.map {
+                if (it.source == "youtube_music") meta.enrich(it) else it
+            }
         }
     }
 
     fun play(tracks: List<Track>, index: Int) = viewModelScope.launch {
         val enriched = tracks.toMutableList()
-        enriched[index] = meta.enrich(enriched[index])
+        if (enriched[index].source == "youtube_music") {
+            enriched[index] = meta.enrich(enriched[index])
+        }
         player.playQueue(enriched, index)
     }
 
@@ -78,4 +122,43 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun isInLibrary(id: String) = dao.isInLibrary(id)
+
+    // ─── Sleep Timer ─────────────────────────────────────────────────
+    fun startSleepTimer(minutes: Int) {
+        sleepJob?.cancel()
+        val endTime = System.currentTimeMillis() + minutes * 60_000L
+        _sleepTimer.value = SleepTimerState(active = true, endTimeMs = endTime)
+        sleepJob = viewModelScope.launch {
+            delay(minutes * 60_000L)
+            player.pause()
+            _sleepTimer.value = SleepTimerState()
+        }
+    }
+
+    fun cancelSleepTimer() {
+        sleepJob?.cancel()
+        _sleepTimer.value = SleepTimerState()
+    }
+
+    // ─── Playlists ───────────────────────────────────────────────────
+    fun createPlaylist(name: String) = viewModelScope.launch {
+        dao.createPlaylist(PlaylistEntity(name = name))
+    }
+
+    fun getPlaylistTracks(id: Long) = dao.playlistTracks(id)
+
+    fun addToPlaylist(playlistId: Long, track: Track) = viewModelScope.launch {
+        val current = dao.playlistTracks(playlistId).first()
+        dao.addToPlaylist(
+            PlaylistTrack(
+                playlistId = playlistId,
+                trackId = track.id,
+                title = track.title,
+                artist = track.artist,
+                artworkUrl = track.artworkUrl,
+                position = current.size
+            )
+        )
+        message.value = "Added to playlist"
+    }
 }
