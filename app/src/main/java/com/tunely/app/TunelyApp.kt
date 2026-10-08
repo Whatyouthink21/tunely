@@ -2,6 +2,8 @@ package com.tunely.app
 
 import android.app.Application
 import com.tunely.app.data.AppDatabase
+import com.tunely.app.data.ArtistRepository
+import com.tunely.app.data.DiscoveryService
 import com.tunely.app.data.HttpDownloader
 import com.tunely.app.data.MusicCatalog
 import com.tunely.app.data.SettingsManager
@@ -28,11 +30,23 @@ class TunelyApp : Application() {
     val registry: SourceRegistry by lazy { SourceRegistry(http) }
     val catalog: MusicCatalog by lazy {
         MusicCatalog(
+            deezer = registry.source("deezer") as com.tunely.app.data.DeezerSource,
+            itunes = registry.source("itunes") as com.tunely.app.data.ITunesSource
+        )
+    }
+    val discovery: DiscoveryService by lazy {
+        DiscoveryService(
             http = http,
             audius = registry.source("audius") as com.tunely.app.data.AudiusSource,
             deezer = registry.source("deezer") as com.tunely.app.data.DeezerSource,
-            itunes = registry.source("itunes") as com.tunely.app.data.ITunesSource,
-            radio = registry.source("radio") as com.tunely.app.data.RadioSource
+            itunes = registry.source("itunes") as com.tunely.app.data.ITunesSource
+        )
+    }
+    val artists: ArtistRepository by lazy {
+        ArtistRepository(
+            audius = registry.source("audius") as com.tunely.app.data.AudiusSource,
+            deezer = registry.source("deezer") as com.tunely.app.data.DeezerSource,
+            itunes = registry.source("itunes") as com.tunely.app.data.ITunesSource
         )
     }
 

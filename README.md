@@ -52,18 +52,60 @@ YouTube) → a same-title YouTube search. If everything fails you get a readable
 
 - **Search** across all enabled providers in parallel, with per-source filter chips, debounced
   queries, shimmer skeletons and a long-press action sheet (play next, queue, favourite, add to
-  playlist — including creating one inline).
-- **Home** with a hero "pick up where you left off" card (progress ring), mood chips, and discovery
-  shelves: Audius trending, global charts, electronic, hip-hop, live radio, plus a
-  "because you listen" shelf built from your history.
+  playlist — including creating one inline, **go to artist**).
+- **Home** personalised from your listening history: a hero "pick up where you left off" card
+  (progress ring), mood chips, **Daily Mixes** seeded from your profile, "because you listened to
+  *x*" shelves, your-artist shortcuts, and "jump back in".
+- **Explore tab** (Spotify/Apple-Music style browse): mood cards, live **charts** (iTunes Top 50 +
+  genre charts with embedded previews, Deezer charts, Audius trending), and genre doors — every one
+  opens a category page with its own picks.
+- **Artist pages**: hero image + audience stats, popular tracks aggregated across providers,
+  discography with hi-res covers, "fans also like" (Deezer related artists), and the artist's bio
+  from Audius. Related artists swap the page in place.
+- **Recommendation engine that never repeats itself** (see below).
 - **Library** with favourites, history and playlists (create, fill, play, delete).
+  History shows **each song once** — replaying a track moves it to the top instead of stacking
+  duplicate rows.
 - **Real audio processing**: 5-band equalizer with 9 presets mapped onto the device bands,
   loudness-enhancer volume normalisation, fade & blend transitions, gapless playback, playback speed.
+- **Transitions everywhere**: tab slides, overlay pages ease in over the tab content, staggered
+  list entrances, springy dock/dock indicator — all switchable via Settings → Motion.
 - **Sleep timer** that can stop after the current track.
 - **Background playback** with a media session: notification and lock-screen controls, audio focus,
   becoming-noisy handling, and 15-minute stream-URL caching.
-- **Database v2 migration** that keeps saved tracks playable — v1 stored tracks without their
-  provider, so anything from SoundCloud/Audius used to be replayed through YouTube.
+- **Database v3 migration**: keeps saved tracks playable (v2) and de-duplicates history while
+  adding genre data for the mood engine (v3).
+
+## 🧠 The recommendation engine
+
+Playing *Danza Kuduro* used to produce a "similar" shelf of… Danza Kuduro. The new
+`DiscoveryService` is built the way the big services do it with metadata alone:
+
+1. **Artist radio** — Deezer's `/artist/{id}/radio` returns a smart mix of the seed artist *and*
+   related artists in one keyless draw (verified live: Daft Punk radio pulls in Madcon,
+   Metronomy, …).
+2. **Related-artist fan-out** — `/artist/{id}/related` tops broaden the pool beyond one radio draw.
+3. **Hard diversity rules** — the seed artist is banned from its own "similar" shelf, no artist
+   appears more than twice, no song you've already heard or saved is recommended back, and picks
+   are round-robin interleaved across inferred moods so one row isn't 20 copies of the same vibe.
+4. **Daily Mixes** — up to four mixes seeded from different slices of your profile (artists,
+   categories, moods); every mix excludes the tracks already used by previous mixes.
+5. **Mood inference** (`MoodClassifier`) — keyword tables over genre/title metadata bucket tracks
+   into Chill / Energy / Focus / Party / Workout / Romance / Drive / Throwback, powering
+   "because you've been playing {category}" shelves and the mood grid.
+6. **Listening profile** — built from history + favourites: top artists, top categories (genres
+   mapped to iTunes chart feeds), top moods, and a signature set (`normalize(title)|artist`) used
+   as the global "never repeat" list. The same signature also collapses the same song across
+   providers.
+
+## 🖼️ Metadata & artwork quality
+
+Provider thumbnails are rewritten to the biggest rendition each CDN serves — YouTube
+`maxresdefault`, iTunes/mzstatic `1200x1200bb`, Deezer `1000x1000`, SoundCloud `t500x500`, Audius
+`1000x1000` — with an automatic step-down ladder (`hqdefault`, `600x600`, …) if a CDN 404s, so
+covers are sharp but never broken. Enrichment now requires **both** title and artist to match
+before trusting external metadata (matching on either alone used to attach the wrong album/year/
+cover), and it fills album, genre, year and art in one bounded-parallel pass.
 
 ## 🐛 Bugs fixed in this rewrite
 
@@ -96,6 +138,16 @@ YouTube) → a same-title YouTube search. If everything fails you get a readable
     friendly error messages, `MODIFY_AUDIO_SETTINGS` permission for the audio effects.
 13. **Library quick-action tiles did nothing**, playlists could not be opened, and the "no results"
     banner appeared when sources were simply all disabled. All addressed.
+14. **History repeated songs** — every play inserted a new row, so history filled with duplicates.
+    v3 keeps one row per song (replays bubble it to the top) and migrates existing duplicates away.
+15. **"Similar" was the same song** — the because-you-listen shelf searched the seed artist again.
+    Replaced by the diversity engine above (artist radio + related-artist fan-out + hard caps).
+16. **Wrong metadata / blurry covers** — enrichment matched on title *or* artist (so any same-title
+    song could donate its album and art), and provider thumbnails were used as-is. Matching is now
+    strict and all artwork is upgraded to hi-res with a fallback ladder.
+17. **Audius silently returned nothing** — its JSON grew a `mirrors` array inside `artwork`, which
+    broke the old `Map<String, String>` decoder and emptied every Audius list. Now parsed properly
+    (plus mood/bpm metadata).
 
 ## 🏗️ Build
 
@@ -109,11 +161,15 @@ YouTube) → a same-title YouTube search. If everything fails you get a readable
 com.tunely.app/
 ├── data/
 │   ├── Models.kt           # Track (+ source, kind, uid), Lyrics, sleep timer
-│   ├── Sources.kt          # StreamingSource + the eight providers
+│   ├── Sources.kt          # StreamingSource + the eight providers (artist radio, charts, lookups)
 │   ├── SourceRegistry.kt   # parallel fan-out search, fallback resolution, quality
-│   ├── MusicCatalog.kt     # home shelves + bounded-parallel metadata enrichment
+│   ├── Discovery.kt        # recommendation engine: profiles, daily mixes, diversity, charts
+│   ├── Moods.kt            # moods, browse categories, genre → mood/category inference
+│   ├── ArtistRepository.kt # artist pages (Deezer identity + iTunes discography + Audius bio)
+│   ├── ArtworkUrls.kt      # hi-res artwork URL upgrade + graceful degradation ladder
+│   ├── MusicCatalog.kt     # bounded-parallel metadata enrichment (strict matching)
 │   ├── SettingsManager.kt  # SharedPreferences → StateFlows, with legacy migration
-│   ├── AppDatabase.kt      # Room v2 (favourites, history, playlists) + migration
+│   ├── AppDatabase.kt      # Room v3 (favourites, deduped history, playlists) + migrations
 │   ├── LyricsRepository.kt # LRCLIB (search + duration match) → Lyrics.ovh, title cleaning
 │   ├── LrcParser.kt        # LRC / enhanced LRC (word timings, offsets, multi-tags)
 │   └── Http.kt             # shared OkHttp helpers, user agents, result interleaving
@@ -123,9 +179,10 @@ com.tunely.app/
 │   ├── AudioEffects.kt     # equalizer presets + loudness enhancer
 │   └── PlayerController.kt # Compose-facing controller, queue as source of truth
 └── ui/
-    ├── MainViewModel.kt    # search, discovery, library, sleep timer, playback
+    ├── MainViewModel.kt    # search, discovery, overlays (artist/category), library, playback
     ├── design/             # Tokens, Motion, Aurora, Artwork, Components, Sheets, Accents
-    └── screens/            # Home, Search, Library, Settings, NowPlaying, Lyrics, actions
+    └── screens/            # Home, Explore, Artist, Category, Search, Library, Settings,
+                            # NowPlaying, Lyrics, actions
 ```
 
 ## ⚠️ Disclaimer

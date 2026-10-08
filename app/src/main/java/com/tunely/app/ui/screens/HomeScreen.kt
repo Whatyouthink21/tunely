@@ -22,13 +22,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Bolt
+import androidx.compose.material.icons.rounded.Celebration
 import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
-import androidx.compose.material.icons.rounded.Radio
+import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Shuffle
-import androidx.compose.material.icons.rounded.TrendingUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -42,6 +43,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.tunely.app.data.Shelf
 import com.tunely.app.data.Track
 import com.tunely.app.ui.MainViewModel
 import com.tunely.app.ui.design.ArtworkImage
@@ -58,16 +60,20 @@ import com.tunely.app.ui.design.TunelyCard
 import com.tunely.app.ui.design.WaveGlyph
 import com.tunely.app.ui.design.tapable
 
-private val MOODS = listOf(
-    "Chill", "Workout", "Lo-fi", "Synthwave", "Jazz", "Focus", "Party", "Acoustic"
-)
-
+/**
+ * Home — personalised like the big services: a hero to pick up where you left
+ * off, daily mixes seeded from your history, "because you listened" shelves
+ * that deliberately serve *different* songs, your artists, and moods to jump
+ * straight into a vibe.
+ */
 @Composable
 fun HomeScreen(
     vm: MainViewModel,
     onOpenPlayer: () -> Unit,
     onSearch: (String) -> Unit,
     onOpenLibrary: () -> Unit,
+    onOpenArtist: (String) -> Unit,
+    onOpenCategory: (String) -> Unit,
     contentPadding: PaddingValues
 ) {
     val colors = T.colors
@@ -83,6 +89,17 @@ fun HomeScreen(
     val hero = playerState.track ?: recentTracks.firstOrNull()
     val greeting = remember { greetingForHour() }
 
+    // Artist shortcuts straight from listening history.
+    val topArtists = remember(recent) {
+        recent.map { it.artist.trim() }
+            .filter { it.isNotBlank() && !it.equals("unknown artist", true) }
+            .distinct()
+            .take(8)
+    }
+
+    val mixes = remember(shelves) { shelves.filter { it.id.startsWith("mix-") } }
+    val feed = remember(shelves) { shelves.filterNot { it.id.startsWith("mix-") } }
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = contentPadding
@@ -96,7 +113,12 @@ fun HomeScreen(
                 }
                 Spacer(Modifier.height(6.dp))
                 Text(greeting, style = T.type.display, color = colors.textPrimary)
-                Text("What are we playing today?", style = T.type.body, color = colors.textSecondary)
+                Text(
+                    if (topArtists.isEmpty()) "What are we playing today?"
+                    else "Picked from what you love",
+                    style = T.type.body,
+                    color = colors.textSecondary
+                )
             }
         }
 
@@ -155,12 +177,86 @@ fun HomeScreen(
             }
         }
 
+        // Mood chips open the matching category page (charts + picks).
         item {
             LazyRow(
                 contentPadding = PaddingValues(horizontal = Dimens.xl, vertical = Dimens.md),
                 horizontalArrangement = Arrangement.spacedBy(Dimens.sm)
             ) {
-                items(MOODS) { mood -> MoodChip(mood) { onSearch(mood) } }
+                items(com.tunely.app.data.Categories.moods) { mood ->
+                    MoodChip(
+                        label = mood.label,
+                        icon = when (mood.id) {
+                            "mood_workout" -> Icons.Rounded.Bolt
+                            "mood_focus" -> Icons.Rounded.AutoAwesome
+                            "mood_party" -> Icons.Rounded.Celebration
+                            else -> Icons.Rounded.Public
+                        }
+                    ) { onOpenCategory(mood.id) }
+                }
+            }
+        }
+
+        // Your artists — one tap to their page.
+        if (topArtists.isNotEmpty()) {
+            item { SectionHeader("Your artists", subtitle = "Tap in for top tracks & more") }
+            item {
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = Dimens.xl),
+                    horizontalArrangement = Arrangement.spacedBy(Dimens.lg)
+                ) {
+                    items(topArtists, key = { "home-artist-$it" }) { artist ->
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier
+                                .width(84.dp)
+                                .tapable { onOpenArtist(artist) }
+                        ) {
+                            Box(
+                                Modifier
+                                    .size(72.dp)
+                                    .clip(CircleShape)
+                                    .background(Brush.linearGradient(colors.accentGradient)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    artist.take(1).uppercase(),
+                                    style = T.type.title,
+                                    color = Color.White
+                                )
+                            }
+                            Spacer(Modifier.height(7.dp))
+                            Text(
+                                artist,
+                                style = T.type.caption,
+                                color = colors.textPrimary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // Daily mixes — seeded from history, no two mixes share a song.
+        if (mixes.isNotEmpty()) {
+            item {
+                SectionHeader("Made for you", subtitle = "Fresh mixes from your history")
+            }
+            item {
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = Dimens.xl),
+                    horizontalArrangement = Arrangement.spacedBy(Dimens.md)
+                ) {
+                    itemsIndexed(mixes, key = { _, s -> "shelf-tile-${s.id}" }) { index, shelf ->
+                        MixTile(
+                            shelf = shelf,
+                            index = index,
+                            onClick = { vm.play(shelf.tracks, 0) }
+                        )
+                    }
+                }
             }
         }
 
@@ -168,7 +264,7 @@ fun HomeScreen(
             items(5) { SkeletonTrackRow() }
         }
 
-        shelves.forEach { shelf ->
+        feed.forEach { shelf ->
             item(key = "header-${shelf.id}") {
                 SectionHeader(
                     title = shelf.title,
@@ -194,7 +290,8 @@ fun HomeScreen(
                             track = track,
                             index = index,
                             isCurrent = playerState.track?.uid == track.uid,
-                            onClick = { vm.play(shelf.tracks, index) }
+                            onClick = { vm.play(shelf.tracks, index) },
+                            onArtistClick = { onOpenArtist(track.artist) }
                         )
                     }
                 }
@@ -210,6 +307,7 @@ fun HomeScreen(
                     isCurrent = playerState.track?.uid == track.uid,
                     isPlaying = playerState.isPlaying,
                     onClick = { vm.play(recentTracks, index) },
+                    onArtistClick = { onOpenArtist(track.artist) },
                     modifier = Modifier.padding(horizontal = Dimens.md)
                 )
             }
@@ -228,6 +326,72 @@ fun HomeScreen(
         }
 
         item { Spacer(Modifier.height(Dimens.xxl)) }
+    }
+}
+
+/** Daily-mix card: a gradient slab over the mix's cover art. */
+@Composable
+private fun MixTile(
+    shelf: Shelf,
+    index: Int,
+    onClick: () -> Unit
+) {
+    val colors = T.colors
+    val covers = shelf.tracks.take(3).mapNotNull { it.artworkUrl }
+    val gradients = listOf(
+        listOf(Color(0xFFFF6A88), Color(0xFFFF99AC)),
+        listOf(Color(0xFF4E54C8), Color(0xFF8F94FB)),
+        listOf(Color(0xFF11998E), Color(0xFF38EF7D)),
+        listOf(Color(0xFFF7971E), Color(0xFFFFD200))
+    )
+    val gradient = gradients[index % gradients.size]
+
+    Column(
+        Modifier
+            .width(150.dp)
+            .tapable { onClick() }
+    ) {
+        Box {
+            if (covers.isNotEmpty()) {
+                ArtworkImage(
+                    url = covers.first(),
+                    modifier = Modifier
+                        .size(150.dp)
+                        .clip(RoundedCornerShape(Dimens.radiusSm)),
+                    shape = RoundedCornerShape(Dimens.radiusSm)
+                )
+            }
+            Box(
+                Modifier
+                    .size(150.dp)
+                    .clip(RoundedCornerShape(Dimens.radiusSm))
+                    .background(
+                        Brush.linearGradient(
+                            listOf(gradient[0].copy(alpha = 0.72f), gradient[1].copy(alpha = 0.88f))
+                        )
+                    )
+            )
+            Column(
+                Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(Dimens.md)
+            ) {
+                Text(shelf.title, style = T.type.title, color = Color.White)
+                Text(
+                    shelf.subtitle,
+                    style = T.type.micro,
+                    color = Color.White.copy(alpha = 0.85f),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "${shelf.tracks.size} tracks · shuffled for you",
+            style = T.type.micro,
+            color = colors.textTertiary
+        )
     }
 }
 
@@ -313,14 +477,12 @@ private fun HeroCard(
 }
 
 @Composable
-private fun MoodChip(label: String, onClick: () -> Unit) {
+private fun MoodChip(
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    onClick: () -> Unit
+) {
     val colors = T.colors
-    val icon = when (label) {
-        "Workout" -> Icons.Rounded.Bolt
-        "Lo-fi", "Focus" -> Icons.Rounded.AutoAwesome
-        "Party", "Chill" -> Icons.Rounded.TrendingUp
-        else -> Icons.Rounded.Radio
-    }
     TunelyCard(onClick = onClick, shape = CircleShape) {
         Row(
             Modifier.padding(horizontal = 14.dp, vertical = 9.dp),

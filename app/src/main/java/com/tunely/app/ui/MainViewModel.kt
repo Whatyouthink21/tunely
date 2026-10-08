@@ -18,6 +18,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val tunely = app as TunelyApp
     private val registry = tunely.registry
     private val catalog = tunely.catalog
+    private val discovery = tunely.discovery
+    private val artists = tunely.artists
     private val lyricsRepo = LyricsRepository(tunely.http)
     private val dao = tunely.db.dao()
 
@@ -47,6 +49,23 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     // ─── Discovery ───────────────────────────────────────────────────
     val shelves = MutableStateFlow<List<Shelf>>(emptyList())
     val shelvesLoading = MutableStateFlow(true)
+
+    /** Explore tab: charts + trending, loaded once and refreshable. */
+    val exploreCharts = MutableStateFlow<List<ChartList>>(emptyList())
+    val exploreTrending = MutableStateFlow<List<Track>>(emptyList())
+    val exploreLoading = MutableStateFlow(true)
+
+    /** Artist pages and category pages open as overlays above the tabs. */
+    sealed interface Overlay {
+        data class ArtistPage(val name: String) : Overlay
+        data class Category(val categoryId: String) : Overlay
+    }
+
+    val overlay = MutableStateFlow<Overlay?>(null)
+    val artistPage = MutableStateFlow<ArtistProfile?>(null)
+    val artistLoading = MutableStateFlow(false)
+    val categoryPage = MutableStateFlow<CategoryPage?>(null)
+    val categoryLoading = MutableStateFlow(false)
 
     /** Providers the user has switched on, in registry order. */
     val enabledSources: StateFlow<List<SourceInfo>> = combine(
@@ -81,31 +100,96 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
 
-        // Track changes: history + lyrics + autoplay for live radio style sources.
+        // Track changes: history + lyrics. recordPlay() moves a repeat play to
+        // the top of History instead of stacking another identical row.
         viewModelScope.launch {
             playerState.map { it.track }.distinctUntilChangedBy { it?.uid }.collect { track ->
                 if (track == null) return@collect
                 if (track.uid == lastTrackUid) return@collect
                 lastTrackUid = track.uid
-                dao.addHistory(HistoryEntry.from(track))
+                dao.recordPlay(HistoryEntry.from(track))
                 loadLyrics(track)
             }
         }
 
         loadShelves()
+        loadExplore()
     }
 
+    /** Home feed: daily mixes first, then personalised shelves. */
     private fun loadShelves() {
         viewModelScope.launch {
             shelvesLoading.value = true
-            val seedArtists = runCatching { dao.topArtists().first() }.getOrDefault(emptyList())
-            val loaded = runCatching { catalog.shelves(seedArtists) }.getOrDefault(emptyList())
-            shelves.value = loaded
+            val history = runCatching { dao.recentlyPlayed().first() }.getOrDefault(emptyList())
+            val favorites = library.value.map { it.toTrack() }
+            val profile = discovery.profile(history, favorites)
+            val home = mutableListOf<Shelf>()
+            home += runCatching { discovery.dailyMixes(profile, 4) }.getOrDefault(emptyList())
+            home += runCatching { discovery.homeShelves(profile) }.getOrDefault(emptyList())
+            shelves.value = home
             shelvesLoading.value = false
         }
     }
 
-    fun refreshShelves() = loadShelves()
+    private fun loadExplore() {
+        viewModelScope.launch {
+            exploreLoading.value = true
+            val charts = runCatching { discovery.charts() }.getOrDefault(emptyList())
+            val trending = runCatching { audiusTrending() }.getOrDefault(emptyList())
+            exploreCharts.value = charts
+            exploreTrending.value = trending
+            exploreLoading.value = false
+        }
+    }
+
+    private suspend fun audiusTrending(): List<Track> =
+        (registry.source(SourceIds.AUDIUS) as? AudiusSource)?.trending(20).orEmpty()
+
+    fun refreshShelves() {
+        loadShelves()
+        loadExplore()
+    }
+
+    // ─── Overlays: artist pages & category pages ─────────────────────
+
+    fun openArtist(name: String) {
+        overlay.value = Overlay.ArtistPage(name)
+        viewModelScope.launch {
+            artistLoading.value = true
+            artistPage.value = null
+            artistPage.value = runCatching { artists.load(name) }.getOrNull()
+            artistLoading.value = false
+        }
+    }
+
+    fun refreshArtist() {
+        val name = (overlay.value as? Overlay.ArtistPage)?.name ?: return
+        viewModelScope.launch {
+            artistLoading.value = true
+            artistPage.value = runCatching { artists.load(name, force = true) }.getOrNull()
+            artistLoading.value = false
+        }
+    }
+
+    fun openCategory(categoryId: String) {
+        val category = Categories.byId(categoryId) ?: return
+        overlay.value = Overlay.Category(categoryId)
+        viewModelScope.launch {
+            categoryLoading.value = true
+            categoryPage.value = null
+            val history = runCatching { dao.recentlyPlayed().first() }.getOrDefault(emptyList())
+            val known = history.map { TrackKey.of(it.toTrack()) }.toSet()
+            val tracks = runCatching {
+                discovery.categoryTracks(category, exclude = known, limit = 30)
+            }.getOrDefault(emptyList())
+            categoryPage.value = CategoryPage(category, tracks)
+            categoryLoading.value = false
+        }
+    }
+
+    fun closeOverlay() {
+        overlay.value = null
+    }
 
     private fun loadLyrics(track: Track) {
         viewModelScope.launch {
