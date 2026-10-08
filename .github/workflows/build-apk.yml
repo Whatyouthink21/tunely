@@ -48,20 +48,29 @@ jobs:
             echo "::error title=Kotlin compile error::${line}"
           done
 
-      # Keeps the compiler output visible in the PR conversation.
-      - name: Report errors on the pull request
-        if: failure() && github.event_name == 'pull_request'
+      # Keeps the build status (and any compiler output) in the PR conversation.
+      - name: Report build status on the pull request
+        if: always() && github.event_name == 'pull_request'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          OUTCOME: ${{ job.status }}
         run: |
-          {
-            echo '### ❌ Build failed'
-            echo
-            echo '```'
-            grep -E -A4 '^e: |error:|What went wrong|Execution failed' build.log | head -n 160 || echo 'No matching error lines'
-            echo '```'
-          } > /tmp/comment.md
+          if [ "$OUTCOME" = "success" ]; then
+            {
+              echo '### ✅ Build succeeded'
+              echo
+              echo "Debug APK: download the **tunely-debug-apk** artifact from [this run](https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)."
+            } > /tmp/comment.md
+          else
+            {
+              echo '### ❌ Build failed'
+              echo
+              echo '```'
+              grep -E -A4 '^e: |error:|What went wrong|Execution failed' build.log | head -n 160 || echo 'No matching error lines'
+              echo '```'
+            } > /tmp/comment.md
+          fi
           gh pr comment "$PR_NUMBER" --body-file /tmp/comment.md --edit-last --create-if-none || true
 
       - uses: actions/upload-artifact@v4
