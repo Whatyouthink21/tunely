@@ -44,7 +44,7 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           # Annotations are readable from the API without downloading the log.
-          grep -E '^e: file' build.log | head -n 15 | while IFS= read -r line; do
+          grep -E -A2 '^e: file' build.log | head -n 45 | while IFS= read -r line; do
             echo "::error title=Kotlin compile error::${line}"
           done
 
@@ -59,7 +59,7 @@ jobs:
             echo '### ❌ Build failed'
             echo
             echo '```'
-            grep -E '^e: |^w: .*error|error:|What went wrong|Execution failed' build.log | head -n 40 || echo 'No matching error lines'
+            grep -E -A4 '^e: |error:|What went wrong|Execution failed' build.log | head -n 160 || echo 'No matching error lines'
             echo '```'
           } > /tmp/comment.md
           gh pr comment "$PR_NUMBER" --body-file /tmp/comment.md --edit-last --create-if-none || true

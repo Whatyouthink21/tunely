@@ -1,6 +1,7 @@
 package com.tunely.app.ui.design
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.EaseOutCubic
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -31,6 +32,8 @@ object Motion {
     val bouncy = spring<Float>(dampingRatio = 0.45f, stiffness = Spring.StiffnessLow)
     val gentle = spring<Float>(dampingRatio = 0.9f, stiffness = Spring.StiffnessMediumLow)
     val quick = tween<Float>(durationMillis = 200, easing = FastOutSlowInEasing)
+    /** Same timing, for [androidx.compose.animation.animateColorAsState]. */
+    val colorQuick = tween<Color>(durationMillis = 200, easing = FastOutSlowInEasing)
     val smooth = tween<Float>(durationMillis = 420, easing = EaseOutCubic)
     val slowSweep = tween<Float>(durationMillis = 1_400, easing = LinearEasing)
 
@@ -90,7 +93,7 @@ fun shimmerBrush(base: Color, highlight: Color): Brush {
         initialValue = -400f,
         targetValue = 1_200f,
         animationSpec = androidx.compose.animation.core.infiniteRepeatable(
-            animation = tween(durationMillis = if (motion) 1_400 else 1, easing = LinearEasing)
+            animation = tween<Float>(durationMillis = if (motion) 1_400 else 1, easing = LinearEasing)
         ),
         label = "shimmerX"
     )

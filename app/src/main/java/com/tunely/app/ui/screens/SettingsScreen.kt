@@ -106,7 +106,7 @@ fun SettingsScreen(vm: MainViewModel, contentPadding: PaddingValues) {
 
     LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = contentPadding) {
         item {
-            Column(Modifier.padding(horizontal = Dimens.xl, top = Dimens.lg)) {
+            Column(Modifier.padding(start = Dimens.xl, end = Dimens.xl, top = Dimens.lg)) {
                 Text("Settings", style = T.type.display, color = colors.textPrimary)
                 Text(
                     "Make it sound and look the way you want",

@@ -70,7 +70,7 @@ fun SearchScreen(vm: MainViewModel, contentPadding: PaddingValues) {
         contentPadding = contentPadding
     ) {
         item {
-            Column(Modifier.padding(horizontal = Dimens.xl, top = Dimens.lg)) {
+            Column(Modifier.padding(start = Dimens.xl, end = Dimens.xl, top = Dimens.lg)) {
                 Text("Search", style = T.type.display, color = colors.textPrimary)
                 Spacer(Modifier.height(Dimens.md))
                 TunelyTextField(

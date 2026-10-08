@@ -84,7 +84,7 @@ fun LibraryScreen(vm: MainViewModel, contentPadding: PaddingValues) {
 
     LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = contentPadding) {
         item {
-            Column(Modifier.padding(horizontal = Dimens.xl, top = Dimens.lg)) {
+            Column(Modifier.padding(start = Dimens.xl, end = Dimens.xl, top = Dimens.lg)) {
                 Text("Library", style = T.type.display, color = colors.textPrimary)
                 Text(
                     "${favorites.size} favourites · ${recentTracks.size} played · ${playlists.size} playlists",

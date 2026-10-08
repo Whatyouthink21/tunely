@@ -99,9 +99,9 @@ fun AuroraCard(
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun Modifier.tapable(
-    onClick: () -> Unit,
     enabled: Boolean = true,
-    onLongClick: (() -> Unit)? = null
+    onLongClick: (() -> Unit)? = null,
+    onClick: () -> Unit
 ): Modifier {
     val source = remember { MutableInteractionSource() }
     return this.combinedClickable(
@@ -234,7 +234,7 @@ fun GhostIconButton(
     } else {
         colors.surfaceHigh.copy(alpha = 0.45f)
     }
-    val animated by animateColorAsState(background, Motion.quick, label = "ghostBg")
+    val animated by animateColorAsState(background, Motion.colorQuick, label = "ghostBg")
     Box(
         modifier
             .then(press)
@@ -280,7 +280,7 @@ fun TunelySwitch(
     )
     val trackColor by animateColorAsState(
         targetValue = if (checked) colors.accent.primary else colors.surfaceHigh,
-        animationSpec = Motion.quick,
+        animationSpec = Motion.colorQuick,
         label = "switchTrack"
     )
     Box(
@@ -411,7 +411,7 @@ fun SourceChip(
     val sourceColor = Color(info.color)
     val bg by animateColorAsState(
         targetValue = if (selected) sourceColor.copy(alpha = 0.18f) else colors.surfaceHigh.copy(alpha = 0.5f),
-        animationSpec = Motion.quick,
+        animationSpec = Motion.colorQuick,
         label = "chipBg"
     )
     val (press, source) = rememberPressScale()
@@ -454,7 +454,7 @@ fun FilterChip(
     val accent = dotColor ?: colors.accent.primary
     val bg by animateColorAsState(
         targetValue = if (selected) accent.copy(alpha = 0.18f) else colors.surfaceHigh.copy(alpha = 0.5f),
-        animationSpec = Motion.quick,
+        animationSpec = Motion.colorQuick,
         label = "filterBg"
     )
     val (press, source) = rememberPressScale()
@@ -858,7 +858,7 @@ fun DockBar(
                 val active = item.id == selected
                 val tint by animateColorAsState(
                     targetValue = if (active) colors.accent.primary else colors.textTertiary,
-                    animationSpec = Motion.quick,
+                    animationSpec = Motion.colorQuick,
                     label = "dockTint"
                 )
                 val scale by animateFloatAsState(
@@ -918,7 +918,7 @@ fun TunelyTextField(
     var focused by remember { mutableStateOf(false) }
     val borderColor by animateColorAsState(
         targetValue = if (focused) colors.accent.primary.copy(alpha = 0.65f) else colors.outline,
-        animationSpec = Motion.quick,
+        animationSpec = Motion.colorQuick,
         label = "fieldBorder"
     )
     Box(
