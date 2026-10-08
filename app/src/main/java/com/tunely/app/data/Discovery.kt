@@ -150,19 +150,19 @@ class DiscoveryService(
         // 1. Artist radio: seed + similar artists in one draw. Best diversity.
         if (artist != null) {
             withTimeoutOrNull(8_000) {
-                runCatching { deezer.artistRadio(artist.id, limit * 3) }.getOrDefault(emptyList())
+                runCatching { deezer.artistRadio(artist.id, limit * 3) }.getOrDefault(emptyList<Track>())
             }?.let { pool += it }
         }
 
         // 2. Related artists' top tracks — same neighbourhood, more names.
         if (artist != null && pool.size < limit * 2) {
             val related = withTimeoutOrNull(8_000) {
-                runCatching { deezer.artistRelated(artist.id, 6) }.getOrDefault(emptyList())
+                runCatching { deezer.artistRelated(artist.id, 6) }.getOrDefault(emptyList<DeezerArtistInfo>())
             }.orEmpty()
             related.take(4).map { rel ->
                 async {
                     withTimeoutOrNull(6_000) {
-                        runCatching { deezer.artistTop(rel.id, 4) }.getOrDefault(emptyList())
+                        runCatching { deezer.artistTop(rel.id, 4) }.getOrDefault(emptyList<Track>())
                     }.orEmpty()
                 }
             }.awaitAll().forEach { pool += it }
@@ -173,7 +173,7 @@ class DiscoveryService(
             val query = listOfNotNull(seed.artist, seed.genre?.substringBefore(","), seed.title)
                 .joinToString(" ")
             withTimeoutOrNull(6_000) {
-                runCatching { itunes.search(query, 8) }.getOrDefault(emptyList())
+                runCatching { itunes.search(query, 8) }.getOrDefault(emptyList<Track>())
             }?.let { pool += it }
         }
 
@@ -240,7 +240,7 @@ class DiscoveryService(
                 Shelf("chart", "Global charts", "Top of the iTunes charts", topSongs(limit = 18))
             }
             jobs += DeferredShelf("radio") {
-                Shelf("radio", "Live radio", "Always on, always live", emptyList())
+                Shelf("radio", "Live radio", "Always on, always live", emptyList<Track>())
             }
 
             jobs.map { job ->
@@ -319,20 +319,20 @@ class DiscoveryService(
         coroutineScope {
             val chart = async {
                 withTimeoutOrNull(8_000) {
-                    runCatching { topSongs(category.itunesGenreId, limit) }.getOrDefault(emptyList())
+                    runCatching { topSongs(category.itunesGenreId, limit) }.getOrDefault(emptyList<Track>())
                 }.orEmpty()
             }
             val trending = async {
                 withTimeoutOrNull(8_000) {
                     category.audiusGenre?.let {
-                        runCatching { audius.trending(limit, it) }.getOrDefault(emptyList())
+                        runCatching { audius.trending(limit, it) }.getOrDefault(emptyList<Track>())
                     }.orEmpty()
                 }.orEmpty()
             }
             val search = async {
                 withTimeoutOrNull(8_000) {
                     category.query?.let {
-                        runCatching { deezer.search(it, limit) }.getOrDefault(emptyList())
+                        runCatching { deezer.search(it, limit) }.getOrDefault(emptyList<Track>())
                     }.orEmpty()
                 }.orEmpty()
             }
@@ -349,27 +349,27 @@ class DiscoveryService(
     suspend fun charts(): List<ChartList> = coroutineScope {
         val global = async {
             withTimeoutOrNull(10_000) {
-                runCatching { topSongs(null, 50) }.getOrDefault(emptyList())
+                runCatching { topSongs(null, 50) }.getOrDefault(emptyList<Track>())
             }.orEmpty()
         }
         val deezerTop = async {
             withTimeoutOrNull(10_000) {
-                runCatching { deezer.chart(25) }.getOrDefault(emptyList())
+                runCatching { deezer.chart(25) }.getOrDefault(emptyList<Track>())
             }.orEmpty()
         }
         val audiusTop = async {
             withTimeoutOrNull(10_000) {
-                runCatching { audius.trending(25) }.getOrDefault(emptyList())
+                runCatching { audius.trending(25) }.getOrDefault(emptyList<Track>())
             }.orEmpty()
         }
         val hiphop = async {
             withTimeoutOrNull(10_000) {
-                runCatching { topSongs(18, 25) }.getOrDefault(emptyList())
+                runCatching { topSongs(18, 25) }.getOrDefault(emptyList<Track>())
             }.orEmpty()
         }
         val dance = async {
             withTimeoutOrNull(10_000) {
-                runCatching { topSongs(17, 25) }.getOrDefault(emptyList())
+                runCatching { topSongs(17, 25) }.getOrDefault(emptyList<Track>())
             }.orEmpty()
         }
         buildList {
@@ -394,7 +394,7 @@ class DiscoveryService(
     /** iTunes top-songs RSS. Genre ids are pre-verified against the live feed. */
     suspend fun topSongs(genreId: Int? = null, limit: Int = 25): List<Track> =
         withContext(Dispatchers.IO) {
-            runCatching { itunes.topSongs(genreId, limit) }.getOrDefault(emptyList())
+            runCatching { itunes.topSongs(genreId, limit) }.getOrDefault(emptyList<Track>())
         }
 
     // ── Diversity engine ───────────────────────────────────────────────────
