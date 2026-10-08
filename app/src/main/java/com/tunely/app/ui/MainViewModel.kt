@@ -1,6 +1,7 @@
 package com.tunely.app.ui
 
 import android.app.Application
+import coil.imageLoader
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.tunely.app.TunelyApp
@@ -11,127 +12,229 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
+/** Everything the screens need: search, library, discovery and playback. */
 class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private val tunely = app as TunelyApp
-    private val yt = YouTubeMusicRepository()
-    private val sc = SoundCloudRepository()
-    private val piped = PipedRepository(tunely.http)
-    private val meta = MetadataRepository(tunely.http)
+    private val registry = tunely.registry
+    private val catalog = tunely.catalog
     private val lyricsRepo = LyricsRepository(tunely.http)
     private val dao = tunely.db.dao()
 
     val settings = tunely.settings
     val player = PlayerController(app)
     val playerState = player.state
+    val position = player.position
+    val playerError = player.error
 
+    // ─── Search ──────────────────────────────────────────────────────
+    val searchQuery = MutableStateFlow("")
+    val activeSource = MutableStateFlow(SOURCE_ALL)
     val searchResults = MutableStateFlow<List<Track>>(emptyList())
     val searching = MutableStateFlow(false)
     val message = MutableStateFlow<String?>(null)
-    val lyrics = MutableStateFlow<Lyrics?>(null)
-    val library = dao.library().stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
-    val recent = dao.recentlyPlayed().stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
-    val playlists = dao.playlists().stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
-    val searchSource = MutableStateFlow("all")
+    private var searchJob: Job? = null
 
-    // Sleep timer
+    // ─── Lyrics ──────────────────────────────────────────────────────
+    val lyrics = MutableStateFlow<Lyrics?>(null)
+    val lyricsLoading = MutableStateFlow(false)
+
+    // ─── Library ─────────────────────────────────────────────────────
+    val library = dao.library().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    val recent = dao.recentlyPlayed().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    val playlists = dao.playlists().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    // ─── Discovery ───────────────────────────────────────────────────
+    val shelves = MutableStateFlow<List<Shelf>>(emptyList())
+    val shelvesLoading = MutableStateFlow(true)
+
+    /** Providers the user has switched on, in registry order. */
+    val enabledSources: StateFlow<List<SourceInfo>> = combine(
+        listOf(
+            settings.sourceYoutube,
+            settings.sourceSoundcloud,
+            settings.sourceBandcamp,
+            settings.sourceAudius,
+            settings.sourceRadio,
+            settings.sourceDeezer,
+            settings.sourceItunes,
+            settings.sourcePiped
+        )
+    ) { flags: Array<Boolean> ->
+        Sources.all.filterIndexed { index, _ -> flags.getOrElse(index) { false } }
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, Sources.all.filter { it.defaultEnabled })
+
+    // ─── Sleep timer ─────────────────────────────────────────────────
     private val _sleepTimer = MutableStateFlow(SleepTimerState())
     val sleepTimer: StateFlow<SleepTimerState> = _sleepTimer.asStateFlow()
     private var sleepJob: Job? = null
 
-    private var searchJob: Job? = null
-    private var lastTrackId: String? = null
+    private var lastTrackUid: String? = null
 
     init {
-        // Position ticker (smooth lyrics and progress bar).
+        // Position ticker: only the cheap position flow is written, so the rest of
+        // the UI is not recomposed 20 times a second.
         viewModelScope.launch {
-            while (true) { player.refreshPosition(); delay(50) }
-        }
-        // Load lyrics + history when the track changes.
-        viewModelScope.launch {
-            playerState.map { it.track }.distinctUntilChangedBy { it?.id }.collect { t ->
-                lyrics.value = null
-                if (t == null || t.id == lastTrackId) return@collect
-                lastTrackId = t.id
-                dao.addHistory(HistoryEntry(trackId = t.id, title = t.title, artist = t.artist, artworkUrl = t.artworkUrl))
-                lyrics.value = lyricsRepo.load(t)
+            while (true) {
+                player.refreshPosition()
+                delay(150)
             }
         }
-        // Apply playback speed whenever setting changes
+
+        // Track changes: history + lyrics + autoplay for live radio style sources.
         viewModelScope.launch {
-            settings.playbackSpeed.collect { speed ->
-                player.setPlaybackSpeed(speed)
+            playerState.map { it.track }.distinctUntilChangedBy { it?.uid }.collect { track ->
+                if (track == null) return@collect
+                if (track.uid == lastTrackUid) return@collect
+                lastTrackUid = track.uid
+                dao.addHistory(HistoryEntry.from(track))
+                loadLyrics(track)
             }
+        }
+
+        loadShelves()
+    }
+
+    private fun loadShelves() {
+        viewModelScope.launch {
+            shelvesLoading.value = true
+            val seedArtists = runCatching { dao.topArtists().first() }.getOrDefault(emptyList())
+            val loaded = runCatching { catalog.shelves(seedArtists) }.getOrDefault(emptyList())
+            shelves.value = loaded
+            shelvesLoading.value = false
         }
     }
 
-    /**
-     * Search across all enabled sources. "all" merges results; otherwise
-     * restricts to a specific provider.
-     */
-    fun search(q: String) {
+    fun refreshShelves() = loadShelves()
+
+    private fun loadLyrics(track: Track) {
+        viewModelScope.launch {
+            lyrics.value = null
+            if (track.source == SourceIds.RADIO) return@launch
+            lyricsLoading.value = true
+            lyrics.value = runCatching { lyricsRepo.load(track) }.getOrNull()
+            lyricsLoading.value = false
+        }
+    }
+
+    fun retryLyrics() {
+        playerState.value.track?.let { loadLyrics(it) }
+    }
+
+    // ─── Search ──────────────────────────────────────────────────────
+
+    fun onQueryChange(query: String) {
+        searchQuery.value = query
         searchJob?.cancel()
-        if (q.isBlank()) { searchResults.value = emptyList(); return }
-        searchJob = viewModelScope.launch {
-            delay(350)
-            searching.value = true
-            message.value = null
-
-            val useYt = settings.sourceYoutube.value || settings.sourceYtmusic.value
-            val useSc = settings.sourceSoundcloud.value
-            val usePiped = settings.sourcePiped.value
-            val source = searchSource.value
-
-            val results = mutableListOf<Track>()
-            try {
-                if ((source == "all" || source == "youtube_music") && useYt) {
-                    results += runCatching { yt.searchSongs(q) }.getOrDefault(emptyList())
-                }
-                if ((source == "all" || source == "soundcloud") && useSc) {
-                    results += runCatching { sc.search(q) }.getOrDefault(emptyList())
-                }
-                if ((source == "all" || source == "piped") && usePiped) {
-                    results += runCatching { piped.search(q) }.getOrDefault(emptyList())
-                }
-            } catch (e: Exception) {
-                message.value = "Search failed: ${e.javaClass.simpleName}: ${e.message}"
-            }
-
-            searchResults.value = results
-            if (results.isEmpty() && message.value == null) message.value = "No results found"
+        if (query.isBlank()) {
+            searchResults.value = emptyList()
             searching.value = false
+            return
+        }
+        searchJob = viewModelScope.launch {
+            delay(320)
+            runSearch(query)
+        }
+    }
 
-            // Enrich YouTube results with iTunes metadata in the background
-            searchResults.value = searchResults.value.map {
-                if (it.source == "youtube_music") meta.enrich(it) else it
+    fun setActiveSource(sourceId: String) {
+        activeSource.value = sourceId
+        val query = searchQuery.value
+        if (query.isNotBlank()) {
+            searchJob?.cancel()
+            searchJob = viewModelScope.launch { runSearch(query) }
+        }
+    }
+
+    private suspend fun runSearch(query: String) {
+        searching.value = true
+        message.value = null
+        val sources = registry.enabledSources(settings).let { enabled ->
+            val filter = activeSource.value
+            if (filter == SOURCE_ALL) enabled else enabled.filter { it.id == filter }
+        }
+        if (sources.isEmpty()) {
+            searching.value = false
+            searchResults.value = emptyList()
+            message.value = "No sources are enabled — turn one on in Settings"
+            return
+        }
+        val results = registry.searchAll(query, sources)
+        if (searchQuery.value != query) return   // a newer search already won
+        searchResults.value = results
+        searching.value = false
+        if (results.isEmpty()) message.value = "Nothing found for \"$query\""
+
+        // Enrich in the background; results update in place when metadata lands.
+        val enriched = catalog.enrichAll(results)
+        if (searchQuery.value == query) searchResults.value = enriched
+    }
+
+    // ─── Playback ────────────────────────────────────────────────────
+
+    fun play(tracks: List<Track>, index: Int, shuffle: Boolean = false) {
+        if (tracks.isEmpty() || index !in tracks.indices) return
+        player.playQueue(tracks, index, shuffle)
+    }
+
+    fun playShuffled(tracks: List<Track>) {
+        if (tracks.isEmpty()) return
+        player.playQueue(tracks, 0, shuffle = true)
+    }
+
+    fun playNext(track: Track) {
+        player.playNext(track)
+        message.value = "Playing next"
+    }
+
+    fun addToQueue(track: Track) {
+        player.addToQueue(track)
+        message.value = "Added to queue"
+    }
+
+    // ─── Favourites ──────────────────────────────────────────────────
+
+    fun isFavorite(track: Track): Boolean =
+        library.value.any { it.id == track.id && SourceIds.normalize(it.source) == SourceIds.normalize(track.source) }
+
+    fun toggleFavorite(track: Track) {
+        viewModelScope.launch {
+            if (isFavorite(track)) {
+                dao.remove(track.id, SourceIds.normalize(track.source))
+                message.value = "Removed from favourites"
+            } else {
+                dao.add(LibraryTrack.from(track))
+                message.value = "Added to favourites"
             }
         }
     }
 
-    fun play(tracks: List<Track>, index: Int) = viewModelScope.launch {
-        val enriched = tracks.toMutableList()
-        if (enriched[index].source == "youtube_music") {
-            enriched[index] = meta.enrich(enriched[index])
-        }
-        player.playQueue(enriched, index)
-    }
+    // ─── Sleep timer ─────────────────────────────────────────────────
 
-    fun toggleLibrary(t: Track, inLibrary: Boolean) = viewModelScope.launch {
-        if (inLibrary) dao.remove(t.id)
-        else dao.add(LibraryTrack(t.id, t.title, t.artist, t.album, t.durationMs, t.artworkUrl))
-    }
-
-    fun isInLibrary(id: String) = dao.isInLibrary(id)
-
-    // ─── Sleep Timer ─────────────────────────────────────────────────
-    fun startSleepTimer(minutes: Int) {
+    fun startSleepTimer(minutes: Int, finishCurrentSong: Boolean = false) {
         sleepJob?.cancel()
         val endTime = System.currentTimeMillis() + minutes * 60_000L
-        _sleepTimer.value = SleepTimerState(active = true, endTimeMs = endTime)
+        _sleepTimer.value = SleepTimerState(
+            active = true,
+            endTimeMs = if (finishCurrentSong) 0L else endTime,
+            finishLastSong = finishCurrentSong
+        )
         sleepJob = viewModelScope.launch {
-            delay(minutes * 60_000L)
-            player.pause()
-            _sleepTimer.value = SleepTimerState()
+            if (finishCurrentSong) {
+                val startUid = playerState.value.track?.uid
+                playerState.collect { state ->
+                    val uid = state.track?.uid
+                    if (uid != null && uid != startUid) {
+                        player.pause()
+                        _sleepTimer.value = SleepTimerState()
+                        sleepJob?.cancel()
+                    }
+                }
+            } else {
+                delay(minutes * 60_000L)
+                player.pause()
+                _sleepTimer.value = SleepTimerState()
+            }
         }
     }
 
@@ -140,25 +243,57 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _sleepTimer.value = SleepTimerState()
     }
 
-    // ─── Playlists ───────────────────────────────────────────────────
-    fun createPlaylist(name: String) = viewModelScope.launch {
-        dao.createPlaylist(PlaylistEntity(name = name))
+    fun sleepTimerRemainingMs(): Long {
+        val state = _sleepTimer.value
+        if (!state.active || state.finishLastSong) return 0L
+        return (state.endTimeMs - System.currentTimeMillis()).coerceAtLeast(0L)
     }
 
-    fun getPlaylistTracks(id: Long) = dao.playlistTracks(id)
+    // ─── Playlists ───────────────────────────────────────────────────
 
-    fun addToPlaylist(playlistId: Long, track: Track) = viewModelScope.launch {
-        val current = dao.playlistTracks(playlistId).first()
-        dao.addToPlaylist(
-            PlaylistTrack(
-                playlistId = playlistId,
-                trackId = track.id,
-                title = track.title,
-                artist = track.artist,
-                artworkUrl = track.artworkUrl,
-                position = current.size
-            )
-        )
-        message.value = "Added to playlist"
+    fun createPlaylist(name: String) {
+        if (name.isBlank()) return
+        viewModelScope.launch {
+            dao.createPlaylist(PlaylistEntity(name = name.trim()))
+            message.value = "Playlist created"
+        }
+    }
+
+    fun deletePlaylist(id: Long) {
+        viewModelScope.launch { dao.deletePlaylist(id) }
+    }
+
+    fun addToPlaylist(playlistId: Long, track: Track) {
+        viewModelScope.launch {
+            val position = dao.playlistTracks(playlistId).first().size
+            dao.addToPlaylist(PlaylistTrack.from(playlistId, track, position))
+            message.value = "Added to playlist"
+        }
+    }
+
+    fun removeFromPlaylist(playlistId: Long, track: Track) {
+        viewModelScope.launch {
+            dao.removeFromPlaylist(playlistId, track.id)
+            message.value = "Removed from playlist"
+        }
+    }
+
+    fun playlistTracks(playlistId: Long): Flow<List<PlaylistTrack>> = dao.playlistTracks(playlistId)
+
+    fun clearMessage() { message.value = null }
+
+    /** Drop cached artwork so a re-scan picks up fresh covers. */
+    fun clearImageCache() {
+        runCatching { getApplication<Application>().imageLoader.memoryCache?.clear() }
+        message.value = "Image cache cleared"
+    }
+
+    override fun onCleared() {
+        player.release()
+        super.onCleared()
+    }
+
+    companion object {
+        const val SOURCE_ALL = "all"
     }
 }

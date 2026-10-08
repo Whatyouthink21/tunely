@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Tunely streams from many providers. Internet radio stations and a few CDNs
+  still hand out plain http:// stream urls, so cleartext is allowed for
+  streaming while everything else stays https-only friendly.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

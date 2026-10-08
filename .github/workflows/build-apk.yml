@@ -1,9 +1,15 @@
 name: Build debug APK
 
 on:
+  # Build every branch and PR so a change is verified before it reaches main.
   push:
-    branches: [main]
+    branches: ["**"]
+  pull_request:
   workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
 
 jobs:
   build:
@@ -37,6 +43,35 @@ jobs:
             grep -E -A4 '^e: |error:|What went wrong|FAILURE|Could not' build.log | head -n 80 || echo 'No error lines found'
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+          # Annotations are readable from the API without downloading the log.
+          grep -E -A2 '^e: file' build.log | head -n 45 | while IFS= read -r line; do
+            echo "::error title=Kotlin compile error::${line}"
+          done
+
+      # Keeps the build status (and any compiler output) in the PR conversation.
+      - name: Report build status on the pull request
+        if: always() && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          OUTCOME: ${{ job.status }}
+        run: |
+          if [ "$OUTCOME" = "success" ]; then
+            {
+              echo '### ✅ Build succeeded'
+              echo
+              echo "Debug APK: download the **tunely-debug-apk** artifact from [this run](https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)."
+            } > /tmp/comment.md
+          else
+            {
+              echo '### ❌ Build failed'
+              echo
+              echo '```'
+              grep -E -A4 '^e: |error:|What went wrong|Execution failed' build.log | head -n 160 || echo 'No matching error lines'
+              echo '```'
+            } > /tmp/comment.md
+          fi
+          gh pr comment "$PR_NUMBER" --body-file /tmp/comment.md --edit-last --create-if-none || true
 
       - uses: actions/upload-artifact@v4
         if: always()
