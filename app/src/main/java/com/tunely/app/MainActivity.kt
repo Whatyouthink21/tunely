@@ -206,40 +206,14 @@ private fun Root(vm: MainViewModel) {
                     }
 
                     // Artist & category pages slide in above the tab content —
-                    // the dock and mini player stay live underneath.
-                    AnimatedVisibility(
-                        visible = overlay != null,
-                        enter = slideInHorizontally(tween(340)) { it / 3 } + fadeIn(tween(240)),
-                        exit = slideOutHorizontally(tween(260)) { it / 3 } + fadeOut(tween(180))
-                    ) {
-                        Box(
-                            Modifier
-                                .fillMaxSize()
-                                .background(colors.background)
-                        ) {
-                            AnimatedContent(
-                                targetState = overlay,
-                                transitionSpec = {
-                                    fadeIn(tween(240)) togetherWith fadeOut(tween(160))
-                                },
-                                label = "overlay"
-                            ) { current ->
-                                when (current) {
-                                    is MainViewModel.Overlay.ArtistPage -> ArtistScreen(
-                                        vm = vm,
-                                        onBack = { vm.closeOverlay() },
-                                        onOpenArtist = { name -> vm.openArtist(name) }
-                                    )
-                                    is MainViewModel.Overlay.Category -> CategoryScreen(
-                                        vm = vm,
-                                        onBack = { vm.closeOverlay() },
-                                        onOpenArtist = { name -> vm.openArtist(name) }
-                                    )
-                                    null -> Box(Modifier.fillMaxSize())
-                                }
-                            }
-                        }
-                    }
+                    // the dock and mini player stay live underneath. Keep this
+                    // outside the ColumnScope so Compose resolves the top-level
+                    // AnimatedVisibility overload.
+                    OverlayPages(
+                        vm = vm,
+                        overlay = overlay,
+                        background = colors.background
+                    )
                 }
 
                 Column(
@@ -305,6 +279,47 @@ private fun Root(vm: MainViewModel) {
                         .background(colors.background)
                 ) {
                     NowPlayingScreen(vm = vm, onCollapse = { expanded = false })
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun OverlayPages(
+    vm: MainViewModel,
+    overlay: MainViewModel.Overlay?,
+    background: Color
+) {
+    AnimatedVisibility(
+        visible = overlay != null,
+        enter = slideInHorizontally(tween(340)) { it / 3 } + fadeIn(tween(240)),
+        exit = slideOutHorizontally(tween(260)) { it / 3 } + fadeOut(tween(180))
+    ) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(background)
+        ) {
+            AnimatedContent(
+                targetState = overlay,
+                transitionSpec = {
+                    fadeIn(tween(240)) togetherWith fadeOut(tween(160))
+                },
+                label = "overlay"
+            ) { current ->
+                when (current) {
+                    is MainViewModel.Overlay.ArtistPage -> ArtistScreen(
+                        vm = vm,
+                        onBack = { vm.closeOverlay() },
+                        onOpenArtist = { name -> vm.openArtist(name) }
+                    )
+                    is MainViewModel.Overlay.Category -> CategoryScreen(
+                        vm = vm,
+                        onBack = { vm.closeOverlay() },
+                        onOpenArtist = { name -> vm.openArtist(name) }
+                    )
+                    null -> Box(Modifier.fillMaxSize())
                 }
             }
         }
