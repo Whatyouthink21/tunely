@@ -36,6 +36,7 @@ import coil.ImageLoader
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import coil.request.SuccessResult
+import com.tunely.app.data.SettingsManager
 import com.tunely.app.data.Track
 import com.tunely.app.player.PlayerUiState
 import kotlin.math.roundToInt
