@@ -2,6 +2,7 @@ package com.tunely.app.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -332,7 +333,7 @@ fun PickerSheet(title: String, options: List<String>, current: String, onSelect:
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(12.dp))
                     .background(if (selected) AccentRed.copy(alpha = 0.18f) else Color.Transparent)
-                    .clickableNoRipple { onSelect(opt) }
+                    .noRippleClick { onSelect(opt) }
                     .padding(horizontal = 14.dp, vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -375,7 +376,7 @@ fun AccentPicker(current: String, onSelect: (String) -> Unit) {
                                     .fillMaxSize()
                                     .clip(RoundedCornerShape(50))
                                     .background(Color.Transparent)
-                                    .then(androidx.compose.foundation.border(2.dp, Color.White, RoundedCornerShape(50))),
+                                    .border(2.dp, Color.White, RoundedCornerShape(50)),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(Icons.Default.Check, null, tint = Color.White, modifier = Modifier.size(22.dp))
@@ -437,9 +438,9 @@ fun CrossfadeSlider(current: Int, onChange: (Int) -> Unit) {
 // helper — click without the ripple (for colored backgrounds)
 @Composable
 private fun Modifier.noRippleClick(onClick: () -> Unit): Modifier = this.then(
-    androidx.compose.foundation.clickable(
+    Modifier.clickable(
         onClick = onClick,
-        interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+        interactionSource = remember { MutableInteractionSource() },
         indication = null
     )
 )
