@@ -74,11 +74,14 @@ class PlayerController(context: Context) {
     }
 
     fun togglePlay() { controller?.let { if (it.isPlaying) it.pause() else it.play() } }
+    fun pause() { controller?.pause() }
+    fun play() { controller?.play() }
     fun next() { controller?.seekToNextMediaItem() }
     fun previous() { controller?.seekToPrevious() }
     fun seekTo(ms: Long) { controller?.seekTo(ms) }
     fun skipTo(index: Int) { controller?.seekToDefaultPosition(index) }
     fun toggleShuffle() { controller?.let { it.shuffleModeEnabled = !it.shuffleModeEnabled } }
+    fun setPlaybackSpeed(speed: Float) { controller?.setPlaybackSpeed(speed) }
     fun cycleRepeat() {
         controller?.let {
             it.repeatMode = when (it.repeatMode) {
