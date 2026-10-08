@@ -136,4 +136,3 @@ fun TrackActionsSheet(
 }
 
 /** Small helper so the sheet keeps its rounded top corners on all densities. */
-internal val sheetShape = RoundedCornerShape(topStart = Dimens.radiusLg, topEnd = Dimens.radiusLg)

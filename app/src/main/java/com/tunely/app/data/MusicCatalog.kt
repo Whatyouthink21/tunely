@@ -64,15 +64,20 @@ class MusicCatalog(
     suspend fun shelves(seedArtists: List<String> = emptyList()): List<Shelf> =
         withContext(Dispatchers.IO) {
             coroutineScope {
-                val trending = async { audius.trending(24) }
-                val electronic = async { audius.trending(18, "Electronic") }
-                val hipHop = async { audius.trending(18, "Hip-Hop/Rap") }
-                val chart = async { deezerChart(24) }
-                val stations = async { radio.search("", 20) }
-                val forYou = async {
+                // Every shelf is independent: one provider being down must never
+                // blank the whole Home screen.
+                fun shelf(block: suspend () -> List<Track>) = async {
+                    withTimeoutOrNull(10_000) { runCatching { block() }.getOrDefault(emptyList()) }
+                        ?: emptyList()
+                }
+                val trending = shelf { audius.trending(24) }
+                val electronic = shelf { audius.trending(18, "Electronic") }
+                val hipHop = shelf { audius.trending(18, "Hip-Hop/Rap") }
+                val chart = shelf { deezerChart(24) }
+                val stations = shelf { radio.search("", 20) }
+                val forYou = shelf {
                     seedArtists.take(2).flatMap { artist ->
-                        withTimeoutOrNull(8_000) { audius.search(artist, 8) }
-                            .orEmpty()
+                        withTimeoutOrNull(8_000) { audius.search(artist, 8) }.orEmpty()
                     }.distinctBy { it.uid }
                 }
 

@@ -386,7 +386,8 @@ fun NowPlayingScreen(
                             WaveGlyph(
                                 Modifier.size(18.dp, 16.dp),
                                 playing = state.isPlaying,
-                                color = Color.White
+                                // Stays readable on the light theme: no white-on-white.
+                                color = colors.accent.primary
                             )
                         }
                     }

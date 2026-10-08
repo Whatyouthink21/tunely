@@ -67,7 +67,9 @@ fun ArtworkImage(
             Icon(
                 imageVector = Icons.Rounded.GraphicEq,
                 contentDescription = null,
-                tint = Color.White.copy(alpha = 0.65f),
+                // Theme token instead of white: the placeholder gradient is light
+                // in the light theme.
+                tint = colors.textPrimary.copy(alpha = 0.55f),
                 modifier = Modifier.fillMaxSize(0.42f)
             )
         }
@@ -188,13 +190,15 @@ fun WaveGlyph(
     val motion = LocalMotionEnabled.current
     var phase by remember { mutableFloatStateOf(0f) }
     LaunchedEffect(playing, motion) {
-        if (!motion) return@LaunchedEffect
+        // The glyph only animates while audio plays; a paused waveform is static,
+        // which keeps the battery (and the frame budget) happy.
+        if (!motion || !playing) return@LaunchedEffect
         var last = 0L
-        while (true) {
+        while (playing) {
             withFrameNanos { now ->
                 val dt = if (last == 0L) 0f else ((now - last) / 1_000_000_000f).coerceIn(0f, 0.05f)
                 last = now
-                phase += dt * (if (playing) 2.4f else 0.6f)
+                phase += dt * 2.4f
             }
         }
     }

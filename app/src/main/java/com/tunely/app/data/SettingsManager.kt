@@ -171,6 +171,11 @@ class SettingsManager(context: Context) {
         migrateLegacyPrefs()
     }
 
+    /** True once the POST_NOTIFICATIONS prompt has been shown; asked only once. */
+    var notificationPrompted: Boolean
+        get() = prefs.getBoolean("prompted_notifications", false)
+        set(value) = prefs.edit().putBoolean("prompted_notifications", value).apply()
+
     /** One-shot migration of pre-1.0 settings so nobody loses their setup. */
     private fun migrateLegacyPrefs() {
         if (prefs.getBoolean("migrated_v2", false)) return

@@ -114,8 +114,16 @@ class PlayerController(context: Context) {
     }
 
     fun playNext(track: Track) {
-        val c = controller ?: return
-        val at = (c.currentMediaItemIndex + 1).coerceIn(0, queue.size)
+        val c = controller
+        if (c == null) {
+            // Nothing is connected yet: start the track rather than dropping it.
+            if (queue.isEmpty()) playQueue(listOf(track), 0)
+            return
+        }
+        val current = c.currentMediaItemIndex
+        // INDEX_UNSET (-1) means nothing is playing: append instead of jumping
+        // to the front of the queue.
+        val at = if (current < 0) queue.size else (current + 1).coerceAtMost(queue.size)
         queue.add(at, track)
         c.addMediaItem(at, PlaybackService.mediaItemFor(track))
         publish()

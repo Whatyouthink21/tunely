@@ -47,7 +47,8 @@ object MediaUri {
             }
             HOST_TRACK -> {
                 val source = segments.getOrNull(0) ?: return null
-                val id = segments.getOrNull(1)?.let { Uri.decode(it) } ?: return null
+                // pathSegments is already percent-decoded by the framework.
+                val id = segments.getOrNull(1) ?: return null
                 Parsed(source = source, id = id)
             }
             else -> null

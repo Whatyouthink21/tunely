@@ -131,8 +131,11 @@ private fun Root(vm: MainViewModel) {
         ActivityResultContracts.RequestPermission()
     ) { }
 
+    // Only ask once: re-prompting on every launch was one of the old annoyances.
     LaunchedEffect(Unit) {
-        if (Build.VERSION.SDK_INT >= 33) {
+        val settings = vm.settings
+        if (Build.VERSION.SDK_INT >= 33 && !settings.notificationPrompted) {
+            settings.notificationPrompted = true
             notifier.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
