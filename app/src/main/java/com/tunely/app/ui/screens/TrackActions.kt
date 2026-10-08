@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
+import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.PlaylistAdd
 import androidx.compose.material.icons.rounded.PlaylistPlay
 import androidx.compose.material.icons.rounded.QueueMusic
@@ -83,6 +84,15 @@ fun TrackActionsSheet(
                 label = "Add to playlist",
                 value = if (playlists.isEmpty()) "Create one" else null,
                 onClick = { showPlaylists = true }
+            )
+            SheetRow(
+                icon = Icons.Rounded.Person,
+                label = "Go to artist",
+                value = track.artist,
+                onClick = {
+                    vm.openArtist(track.artist)
+                    onDismiss()
+                }
             )
         } else {
             Column(Modifier.padding(horizontal = Dimens.lg, vertical = Dimens.sm)) {

@@ -16,6 +16,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
@@ -30,9 +31,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import com.tunely.app.data.ArtworkUrls
 import kotlin.math.sin
 
 /**
@@ -74,12 +78,28 @@ fun ArtworkImage(
             )
         }
         if (!url.isNullOrBlank()) {
-            AsyncImage(
-                model = url,
-                contentDescription = null,
-                contentScale = contentScale,
-                modifier = Modifier.fillMaxSize()
-            )
+            // Try the upgraded hi-res URL first; if the CDN 404s (some YouTube
+            // videos have no maxres thumbnail) step down the ladder instead of
+            // leaving a hole where the cover should be.
+            val context = LocalContext.current
+            var ladder by remember(url) { mutableStateOf(ArtworkUrls.fallbacks(url)) }
+            val current = ladder.firstOrNull()
+            if (current != null) {
+                val request = remember(current) {
+                    ImageRequest.Builder(context)
+                        .data(current)
+                        .listener(
+                            onError = { _, _ -> ladder = ladder.drop(1) }
+                        )
+                        .build()
+                }
+                AsyncImage(
+                    model = request,
+                    contentDescription = null,
+                    contentScale = contentScale,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
         }
     }
 }

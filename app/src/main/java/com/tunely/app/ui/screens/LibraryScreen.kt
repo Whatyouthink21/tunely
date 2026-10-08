@@ -176,6 +176,7 @@ fun LibraryScreen(vm: MainViewModel, contentPadding: PaddingValues) {
                     isPlaying = playerState.isPlaying,
                     onClick = { vm.play(favorites, index) },
                     onLongClick = { actionTrack = track },
+                    onArtistClick = { vm.openArtist(track.artist) },
                     modifier = Modifier.padding(horizontal = Dimens.md),
                     trailing = {
                         GhostIconButton(
@@ -212,6 +213,7 @@ fun LibraryScreen(vm: MainViewModel, contentPadding: PaddingValues) {
                     isPlaying = playerState.isPlaying,
                     onClick = { vm.play(recentTracks, index) },
                     onLongClick = { actionTrack = track },
+                    onArtistClick = { vm.openArtist(track.artist) },
                     modifier = Modifier.padding(horizontal = Dimens.md)
                 )
             }

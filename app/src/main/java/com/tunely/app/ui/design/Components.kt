@@ -645,6 +645,7 @@ fun TrackRow(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     onLongClick: (() -> Unit)? = null,
+    onArtistClick: (() -> Unit)? = null,
     isCurrent: Boolean = false,
     isPlaying: Boolean = false,
     showSource: Boolean = true,
@@ -721,7 +722,15 @@ fun TrackRow(
                     color = colors.textSecondary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false)
+                    modifier = Modifier
+                        .weight(1f, fill = false)
+                        .then(
+                            if (onArtistClick != null) {
+                                Modifier.tapable(onClick = onArtistClick)
+                            } else {
+                                Modifier
+                            }
+                        )
                 )
                 if (showSource) {
                     Spacer(Modifier.width(6.dp))
@@ -749,7 +758,8 @@ fun TrackTile(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     width: Dp = 148.dp,
-    isCurrent: Boolean = false
+    isCurrent: Boolean = false,
+    onArtistClick: (() -> Unit)? = null
 ) {
     val colors = T.colors
     val (press, source) = rememberPressScale()
@@ -805,7 +815,15 @@ fun TrackTile(
                 color = colors.textSecondary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f, fill = false)
+                modifier = Modifier
+                    .weight(1f, fill = false)
+                    .then(
+                        if (onArtistClick != null) {
+                            Modifier.tapable(onClick = onArtistClick)
+                        } else {
+                            Modifier
+                        }
+                    )
             )
             Spacer(Modifier.width(6.dp))
             SourceBadge(track.source)

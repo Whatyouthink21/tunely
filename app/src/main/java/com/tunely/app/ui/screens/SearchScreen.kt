@@ -181,6 +181,7 @@ fun SearchScreen(vm: MainViewModel, contentPadding: PaddingValues) {
                             isPlaying = playerState.isPlaying,
                             onClick = { vm.play(results, index) },
                             onLongClick = { actionTrack = track },
+                            onArtistClick = { vm.openArtist(track.artist) },
                             trailing = {
                                 GhostIconButton(
                                     icon = Icons.Rounded.MoreVert,

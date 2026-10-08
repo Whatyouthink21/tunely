@@ -39,6 +39,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Explore
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material.icons.rounded.Search
@@ -68,6 +69,9 @@ import com.tunely.app.ui.design.GhostIconButton
 import com.tunely.app.ui.design.T
 import com.tunely.app.ui.design.TunelyTheme
 import com.tunely.app.ui.design.rememberArtworkColors
+import com.tunely.app.ui.screens.ArtistScreen
+import com.tunely.app.ui.screens.CategoryScreen
+import com.tunely.app.ui.screens.ExploreScreen
 import com.tunely.app.ui.screens.HomeScreen
 import com.tunely.app.ui.screens.LibraryScreen
 import com.tunely.app.ui.screens.MiniPlayer
@@ -92,7 +96,8 @@ class MainActivity : ComponentActivity() {
 }
 
 private enum class Tab(val label: String) {
-    HOME("Discover"),
+    HOME("Home"),
+    EXPLORE("Explore"),
     SEARCH("Search"),
     LIBRARY("Library"),
     SETTINGS("Settings")
@@ -109,6 +114,7 @@ private fun Root(vm: MainViewModel) {
 
     var tab by remember { mutableIntStateOf(0) }
     var expanded by remember { mutableStateOf(false) }
+    val overlay by vm.overlay.collectAsState()
     val banner = playerError ?: message
 
     val artworkSeeds = rememberArtworkColors(
@@ -140,7 +146,12 @@ private fun Root(vm: MainViewModel) {
         }
     }
 
-    BackHandler(enabled = expanded) { expanded = false }
+    BackHandler(enabled = expanded || overlay != null) {
+        when {
+            expanded -> expanded = false
+            else -> vm.closeOverlay()
+        }
+    }
 
     AuroraSurfaceRoot(
         seeds = artworkSeeds,
@@ -178,11 +189,55 @@ private fun Root(vm: MainViewModel) {
                                     tab = Tab.SEARCH.ordinal
                                 },
                                 onOpenLibrary = { tab = Tab.LIBRARY.ordinal },
+                                onOpenArtist = { name -> vm.openArtist(name) },
+                                onOpenCategory = { id -> vm.openCategory(id) },
+                                contentPadding = pagePadding
+                            )
+                            Tab.EXPLORE.ordinal -> ExploreScreen(
+                                vm = vm,
+                                onOpenCategory = { id -> vm.openCategory(id) },
+                                onOpenArtist = { name -> vm.openArtist(name) },
                                 contentPadding = pagePadding
                             )
                             Tab.SEARCH.ordinal -> SearchScreen(vm, pagePadding)
                             Tab.LIBRARY.ordinal -> LibraryScreen(vm, pagePadding)
                             else -> SettingsScreen(vm, pagePadding)
+                        }
+                    }
+
+                    // Artist & category pages slide in above the tab content —
+                    // the dock and mini player stay live underneath.
+                    AnimatedVisibility(
+                        visible = overlay != null,
+                        enter = slideInHorizontally(tween(340)) { it / 3 } + fadeIn(tween(240)),
+                        exit = slideOutHorizontally(tween(260)) { it / 3 } + fadeOut(tween(180))
+                    ) {
+                        Box(
+                            Modifier
+                                .fillMaxSize()
+                                .background(colors.background)
+                        ) {
+                            AnimatedContent(
+                                targetState = overlay,
+                                transitionSpec = {
+                                    fadeIn(tween(240)) togetherWith fadeOut(tween(160))
+                                },
+                                label = "overlay"
+                            ) { current ->
+                                when (current) {
+                                    is MainViewModel.Overlay.ArtistPage -> ArtistScreen(
+                                        vm = vm,
+                                        onBack = { vm.closeOverlay() },
+                                        onOpenArtist = { name -> vm.openArtist(name) }
+                                    )
+                                    is MainViewModel.Overlay.Category -> CategoryScreen(
+                                        vm = vm,
+                                        onBack = { vm.closeOverlay() },
+                                        onOpenArtist = { name -> vm.openArtist(name) }
+                                    )
+                                    null -> Box(Modifier.fillMaxSize())
+                                }
+                            }
                         }
                     }
                 }
@@ -227,6 +282,7 @@ private fun Root(vm: MainViewModel) {
                     DockBar(
                         items = listOf(
                             DockItem(Tab.HOME.ordinal, Tab.HOME.label, Icons.Rounded.Home),
+                            DockItem(Tab.EXPLORE.ordinal, Tab.EXPLORE.label, Icons.Rounded.Explore),
                             DockItem(Tab.SEARCH.ordinal, Tab.SEARCH.label, Icons.Rounded.Search),
                             DockItem(Tab.LIBRARY.ordinal, Tab.LIBRARY.label, Icons.Rounded.LibraryMusic),
                             DockItem(Tab.SETTINGS.ordinal, Tab.SETTINGS.label, Icons.Rounded.Settings)

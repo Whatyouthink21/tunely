@@ -48,20 +48,22 @@ data class HistoryEntry(
     val streamUrl: String? = null,
     val durationMs: Long = 0,
     val album: String? = null,
+    val genre: String? = null,
     val live: Boolean = false,
     val playedAt: Long = System.currentTimeMillis()
 ) {
     fun toTrack() = Track(
         id = trackId, title = title, artist = artist, album = album, durationMs = durationMs,
         artworkUrl = artworkUrl, source = SourceIds.normalize(source),
-        sourceUrl = sourceUrl, streamUrl = streamUrl, live = live
+        sourceUrl = sourceUrl, streamUrl = streamUrl, genre = genre, live = live
     )
 
     companion object {
         fun from(t: Track) = HistoryEntry(
             trackId = t.id, title = t.title, artist = t.artist, artworkUrl = t.artworkUrl,
             source = SourceIds.normalize(t.source), sourceUrl = t.sourceUrl,
-            streamUrl = t.streamUrl, durationMs = t.durationMs, album = t.album, live = t.live
+            streamUrl = t.streamUrl, durationMs = t.durationMs, album = t.album,
+            genre = t.genre, live = t.live
         )
     }
 }
@@ -121,11 +123,37 @@ interface LibraryDao {
     @Insert
     suspend fun addHistory(entry: HistoryEntry)
 
+    @Query("DELETE FROM history WHERE trackId = :trackId AND source = :source")
+    suspend fun forgetPlays(trackId: String, source: String)
+
+    /**
+     * History shows each song once, at its most recent play. Replays move the
+     * entry to the top instead of piling up duplicates.
+     */
+    @Transaction
+    suspend fun recordPlay(entry: HistoryEntry) {
+        forgetPlays(entry.trackId, entry.source)
+        addHistory(entry)
+        trimHistory()
+    }
+
+    @Query(
+        "DELETE FROM history WHERE rowId NOT IN " +
+            "(SELECT rowId FROM history ORDER BY playedAt DESC LIMIT 400)"
+    )
+    suspend fun trimHistory()
+
     @Query("SELECT * FROM history ORDER BY playedAt DESC LIMIT 60")
     fun recentlyPlayed(): Flow<List<HistoryEntry>>
 
-    @Query("SELECT DISTINCT artist FROM history ORDER BY playedAt DESC LIMIT 3")
+    @Query("SELECT artist FROM history GROUP BY artist ORDER BY MAX(playedAt) DESC LIMIT 8")
     fun topArtists(): Flow<List<String>>
+
+    @Query(
+        "SELECT genre FROM history WHERE genre IS NOT NULL AND genre != '' " +
+            "GROUP BY genre ORDER BY MAX(playedAt) DESC LIMIT 8"
+    )
+    fun topGenres(): Flow<List<String>>
 
     @Insert
     suspend fun createPlaylist(p: PlaylistEntity): Long
@@ -154,7 +182,7 @@ interface LibraryDao {
 
 @Database(
     entities = [LibraryTrack::class, HistoryEntry::class, PlaylistEntity::class, PlaylistTrack::class],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -191,9 +219,25 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * v3: history keeps one row per song (replays move it to the top
+         * instead of stacking duplicates) and remembers the genre so the
+         * recommendation engine can build mood/category profiles.
+         */
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE history ADD COLUMN genre TEXT")
+                // Collapse existing duplicates, keeping the most recent play.
+                db.execSQL(
+                    "DELETE FROM history WHERE rowId NOT IN " +
+                        "(SELECT MAX(rowId) FROM history GROUP BY trackId, source)"
+                )
+            }
+        }
+
         fun create(ctx: Context) =
             Room.databaseBuilder(ctx, AppDatabase::class.java, "tunely.db")
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .build()
     }
 }
