@@ -1,8 +1,10 @@
 name: Build debug APK
 
 on:
+  # Build every branch and PR so a change is verified before it reaches main.
   push:
-    branches: [main]
+    branches: ["**"]
+  pull_request:
   workflow_dispatch:
 
 jobs:
