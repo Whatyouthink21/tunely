@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Edge-to-edge shell. Compose draws everything, so the platform theme only
+      has to supply transparent system bars and the ink background that shows
+      during the first frame.
+    -->
+    <style name="Theme.Tunely" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/tunely_ink</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+    </style>
+</resources>

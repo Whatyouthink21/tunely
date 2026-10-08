@@ -3,117 +3,206 @@ package com.tunely.app.data
 import android.content.Context
 import android.content.SharedPreferences
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+
+/** Named accent identities; the actual colours live in ui/design/Accents.kt. */
+object AccentIds {
+    val ALL = listOf("nova", "pulse", "solar", "orchid", "ember", "glacier", "lime", "mono")
+    const val DEFAULT = "nova"
+}
+
+object AudioQuality {
+    val ALL = listOf("data_saver", "balanced", "high", "audiophile")
+    const val DEFAULT = "high"
+
+    /** Target bitrate in kbps; 0 means "as high as the provider offers". */
+    fun targetKbps(id: String): Int = when (id) {
+        "data_saver" -> 96
+        "balanced" -> 128
+        "high" -> 256
+        else -> 0
+    }
+
+    fun label(id: String): String = when (id) {
+        "data_saver" -> "Data saver"
+        "balanced" -> "Balanced"
+        "high" -> "High"
+        else -> "Audiophile"
+    }
+}
+
+/** Player artwork treatment. */
+object PlayerStyle {
+    const val DISC = "disc"
+    const val COVER = "cover"
+    val ALL = listOf(DISC, COVER)
+}
 
 /**
  * Central settings store backed by SharedPreferences with reactive StateFlows.
- * Apple Music-style: every preference is a simple toggle or picker.
+ * Every setter writes through to disk, so preferences survive a process death.
  */
 class SettingsManager(context: Context) {
 
     private val prefs: SharedPreferences =
         context.getSharedPreferences("tunely_settings", Context.MODE_PRIVATE)
 
-    // ─── Audio ───────────────────────────────────────────────────────
-    private val _audioQuality = MutableStateFlow(prefs.getString("audio_quality", "high") ?: "high")
-    val audioQuality: StateFlow<String> = _audioQuality.asStateFlow()
-    fun setAudioQuality(q: String) { prefs.edit().putString("audio_quality", q).apply(); _audioQuality.value = q }
-
-    private val _crossfadeDuration = MutableStateFlow(prefs.getInt("crossfade", 0))
-    val crossfadeDuration: StateFlow<Int> = _crossfadeDuration.asStateFlow()
-    fun setCrossfadeDuration(sec: Int) { prefs.edit().putInt("crossfade", sec).apply(); _crossfadeDuration.value = sec }
-
-    private val _playbackSpeed = MutableStateFlow(prefs.getFloat("playback_speed", 1.0f))
-    val playbackSpeed: StateFlow<Float> = _playbackSpeed.asStateFlow()
-    fun setPlaybackSpeed(speed: Float) { prefs.edit().putFloat("playback_speed", speed).apply(); _playbackSpeed.value = speed }
-
-    private val _normalizeVolume = MutableStateFlow(prefs.getBoolean("normalize", false))
-    val normalizeVolume: StateFlow<Boolean> = _normalizeVolume.asStateFlow()
-    fun setNormalizeVolume(on: Boolean) { prefs.edit().putBoolean("normalize", on).apply(); _normalizeVolume.value = on }
-
-    private val _eqEnabled = MutableStateFlow(prefs.getBoolean("eq_enabled", false))
-    val eqEnabled: StateFlow<Boolean> = _eqEnabled.asStateFlow()
-    fun setEqEnabled(on: Boolean) { prefs.edit().putBoolean("eq_enabled", on).apply(); _eqEnabled.value = on }
-
-    private val _eqPreset = MutableStateFlow(prefs.getString("eq_preset", "flat") ?: "flat")
-    val eqPreset: StateFlow<String> = _eqPreset.asStateFlow()
-    fun setEqPreset(p: String) { prefs.edit().putString("eq_preset", p).apply(); _eqPreset.value = p }
-
     // ─── Appearance ──────────────────────────────────────────────────
-    private val _themeMode = MutableStateFlow(prefs.getString("theme", "system") ?: "system")
-    val themeMode: StateFlow<String> = _themeMode.asStateFlow()
-    fun setThemeMode(m: String) { prefs.edit().putString("theme", m).apply(); _themeMode.value = m }
+    val themeMode = MutableStateFlow(prefs.getString("theme", "system") ?: "system")
+    fun setThemeMode(m: String) = putString("theme", themeMode, m)
 
-    private val _accentColor = MutableStateFlow(prefs.getString("accent", "red") ?: "red")
-    val accentColor: StateFlow<String> = _accentColor.asStateFlow()
-    fun setAccentColor(c: String) { prefs.edit().putString("accent", c).apply(); _accentColor.value = c }
+    val accent = MutableStateFlow(prefs.getString("accent", AccentIds.DEFAULT) ?: AccentIds.DEFAULT)
+    fun setAccent(a: String) = putString("accent", accent, a)
 
-    private val _lyricsFontSize = MutableStateFlow(prefs.getInt("lyrics_font", 30))
-    val lyricsFontSize: StateFlow<Int> = _lyricsFontSize.asStateFlow()
-    fun setLyricsFontSize(s: Int) { prefs.edit().putInt("lyrics_font", s).apply(); _lyricsFontSize.value = s }
+    val aurora = MutableStateFlow(prefs.getBoolean("aurora", true))
+    fun setAurora(on: Boolean) = putBoolean("aurora", aurora, on)
 
-    private val _lyricsGlow = MutableStateFlow(prefs.getBoolean("lyrics_glow", true))
-    val lyricsGlow: StateFlow<Boolean> = _lyricsGlow.asStateFlow()
-    fun setLyricsGlow(on: Boolean) { prefs.edit().putBoolean("lyrics_glow", on).apply(); _lyricsGlow.value = on }
+    val motionEnabled = MutableStateFlow(prefs.getBoolean("motion", true))
+    fun setMotionEnabled(on: Boolean) = putBoolean("motion", motionEnabled, on)
 
-    private val _glassEffect = MutableStateFlow(prefs.getBoolean("glass", true))
-    val glassEffect: StateFlow<Boolean> = _glassEffect.asStateFlow()
-    fun setGlassEffect(on: Boolean) { prefs.edit().putBoolean("glass", on).apply(); _glassEffect.value = on }
+    val playerStyle = MutableStateFlow(prefs.getString("player_style", PlayerStyle.DISC) ?: PlayerStyle.DISC)
+    fun setPlayerStyle(s: String) = putString("player_style", playerStyle, s)
 
-    private val _animatedBackground = MutableStateFlow(prefs.getBoolean("anim_bg", true))
-    val animatedBackground: StateFlow<Boolean> = _animatedBackground.asStateFlow()
-    fun setAnimatedBackground(on: Boolean) { prefs.edit().putBoolean("anim_bg", on).apply(); _animatedBackground.value = on }
+    val blurArtwork = MutableStateFlow(prefs.getBoolean("blur_art", true))
+    fun setBlurArtwork(on: Boolean) = putBoolean("blur_art", blurArtwork, on)
 
-    // ─── Playback ────────────────────────────────────────────────────
-    private val _gapless = MutableStateFlow(prefs.getBoolean("gapless", true))
-    val gapless: StateFlow<Boolean> = _gapless.asStateFlow()
-    fun setGapless(on: Boolean) { prefs.edit().putBoolean("gapless", on).apply(); _gapless.value = on }
+    // ─── Audio ───────────────────────────────────────────────────────
+    val audioQuality = MutableStateFlow(prefs.getString("audio_quality", AudioQuality.DEFAULT) ?: AudioQuality.DEFAULT)
+    fun setAudioQuality(q: String) = putString("audio_quality", audioQuality, q)
 
-    private val _autoPlay = MutableStateFlow(prefs.getBoolean("autoplay", true))
-    val autoPlay: StateFlow<Boolean> = _autoPlay.asStateFlow()
-    fun setAutoPlay(on: Boolean) { prefs.edit().putBoolean("autoplay", on).apply(); _autoPlay.value = on }
+    val playbackSpeed = MutableStateFlow(prefs.getFloat("playback_speed", 1f))
+    fun setPlaybackSpeed(speed: Float) {
+        prefs.edit().putFloat("playback_speed", speed).apply(); playbackSpeed.value = speed
+    }
 
-    // ─── Streaming Sources ───────────────────────────────────────────
-    private val _sourceYoutube = MutableStateFlow(prefs.getBoolean("src_yt", true))
-    val sourceYoutube: StateFlow<Boolean> = _sourceYoutube.asStateFlow()
-    fun setSourceYoutube(on: Boolean) { prefs.edit().putBoolean("src_yt", on).apply(); _sourceYoutube.value = on }
+    val crossfadeSeconds = MutableStateFlow(prefs.getInt("crossfade", 0))
+    fun setCrossfadeSeconds(sec: Int) {
+        prefs.edit().putInt("crossfade", sec).apply(); crossfadeSeconds.value = sec
+    }
 
-    private val _sourceYtmusic = MutableStateFlow(prefs.getBoolean("src_ytm", true))
-    val sourceYtmusic: StateFlow<Boolean> = _sourceYtmusic.asStateFlow()
-    fun setSourceYtmusic(on: Boolean) { prefs.edit().putBoolean("src_ytm", on).apply(); _sourceYtmusic.value = on }
+    val normalizeVolume = MutableStateFlow(prefs.getBoolean("normalize", false))
+    fun setNormalizeVolume(on: Boolean) = putBoolean("normalize", normalizeVolume, on)
 
-    private val _sourceSoundcloud = MutableStateFlow(prefs.getBoolean("src_sc", true))
-    val sourceSoundcloud: StateFlow<Boolean> = _sourceSoundcloud.asStateFlow()
-    fun setSourceSoundcloud(on: Boolean) { prefs.edit().putBoolean("src_sc", on).apply(); _sourceSoundcloud.value = on }
+    val eqEnabled = MutableStateFlow(prefs.getBoolean("eq_enabled", false))
+    fun setEqEnabled(on: Boolean) = putBoolean("eq_enabled", eqEnabled, on)
 
-    private val _sourcePiped = MutableStateFlow(prefs.getBoolean("src_piped", false))
-    val sourcePiped: StateFlow<Boolean> = _sourcePiped.asStateFlow()
-    fun setSourcePiped(on: Boolean) { prefs.edit().putBoolean("src_piped", on).apply(); _sourcePiped.value = on }
+    val eqPreset = MutableStateFlow(prefs.getString("eq_preset", "flat") ?: "flat")
+    fun setEqPreset(p: String) = putString("eq_preset", eqPreset, p)
+
+    val gapless = MutableStateFlow(prefs.getBoolean("gapless", true))
+    fun setGapless(on: Boolean) = putBoolean("gapless", gapless, on)
+
+    val autoPlay = MutableStateFlow(prefs.getBoolean("autoplay", true))
+    fun setAutoPlay(on: Boolean) = putBoolean("autoplay", autoPlay, on)
+
+    // ─── Lyrics ──────────────────────────────────────────────────────
+    val lyricsFontSize = MutableStateFlow(prefs.getInt("lyrics_font", 30))
+    fun setLyricsFontSize(s: Int) {
+        prefs.edit().putInt("lyrics_font", s).apply(); lyricsFontSize.value = s
+    }
+
+    val lyricsGlow = MutableStateFlow(prefs.getBoolean("lyrics_glow", true))
+    fun setLyricsGlow(on: Boolean) = putBoolean("lyrics_glow", lyricsGlow, on)
+
+    val lyricsCenter = MutableStateFlow(prefs.getBoolean("lyrics_center", true))
+    fun setLyricsCenter(on: Boolean) = putBoolean("lyrics_center", lyricsCenter, on)
+
+    // ─── Streaming sources ───────────────────────────────────────────
+    val sourceYoutube = MutableStateFlow(prefs.getBoolean("src_youtube", true))
+    fun setSourceYoutube(on: Boolean) = putBoolean("src_youtube", sourceYoutube, on)
+
+    val sourceSoundcloud = MutableStateFlow(prefs.getBoolean("src_soundcloud", true))
+    fun setSourceSoundcloud(on: Boolean) = putBoolean("src_soundcloud", sourceSoundcloud, on)
+
+    val sourceBandcamp = MutableStateFlow(prefs.getBoolean("src_bandcamp", true))
+    fun setSourceBandcamp(on: Boolean) = putBoolean("src_bandcamp", sourceBandcamp, on)
+
+    val sourceAudius = MutableStateFlow(prefs.getBoolean("src_audius", true))
+    fun setSourceAudius(on: Boolean) = putBoolean("src_audius", sourceAudius, on)
+
+    val sourceDeezer = MutableStateFlow(prefs.getBoolean("src_deezer", false))
+    fun setSourceDeezer(on: Boolean) = putBoolean("src_deezer", sourceDeezer, on)
+
+    val sourceItunes = MutableStateFlow(prefs.getBoolean("src_itunes", false))
+    fun setSourceItunes(on: Boolean) = putBoolean("src_itunes", sourceItunes, on)
+
+    val sourceRadio = MutableStateFlow(prefs.getBoolean("src_radio", false))
+    fun setSourceRadio(on: Boolean) = putBoolean("src_radio", sourceRadio, on)
+
+    val sourcePiped = MutableStateFlow(prefs.getBoolean("src_piped", false))
+    fun setSourcePiped(on: Boolean) = putBoolean("src_piped", sourcePiped, on)
+
+    /** Look up the toggle flow for a provider so Settings can be data-driven. */
+    fun sourceFor(id: String): MutableStateFlow<Boolean>? = when (SourceIds.normalize(id)) {
+        SourceIds.YOUTUBE -> sourceYoutube
+        SourceIds.SOUNDCLOUD -> sourceSoundcloud
+        SourceIds.BANDCAMP -> sourceBandcamp
+        SourceIds.AUDIUS -> sourceAudius
+        SourceIds.DEEZER -> sourceDeezer
+        SourceIds.ITUNES -> sourceItunes
+        SourceIds.RADIO -> sourceRadio
+        SourceIds.PIPED -> sourcePiped
+        else -> null
+    }
+
+    fun setSource(id: String, enabled: Boolean) {
+        when (SourceIds.normalize(id)) {
+            SourceIds.YOUTUBE -> setSourceYoutube(enabled)
+            SourceIds.SOUNDCLOUD -> setSourceSoundcloud(enabled)
+            SourceIds.BANDCAMP -> setSourceBandcamp(enabled)
+            SourceIds.AUDIUS -> setSourceAudius(enabled)
+            SourceIds.DEEZER -> setSourceDeezer(enabled)
+            SourceIds.ITUNES -> setSourceItunes(enabled)
+            SourceIds.RADIO -> setSourceRadio(enabled)
+            SourceIds.PIPED -> setSourcePiped(enabled)
+        }
+    }
 
     // ─── Data ────────────────────────────────────────────────────────
-    private val _cacheEnabled = MutableStateFlow(prefs.getBoolean("cache", true))
-    val cacheEnabled: StateFlow<Boolean> = _cacheEnabled.asStateFlow()
-    fun setCacheEnabled(on: Boolean) { prefs.edit().putBoolean("cache", on).apply(); _cacheEnabled.value = on }
+    val cacheEnabled = MutableStateFlow(prefs.getBoolean("cache", true))
+    fun setCacheEnabled(on: Boolean) = putBoolean("cache", cacheEnabled, on)
 
-    // ─── Sleep Timer ─────────────────────────────────────────────────
-    private val _sleepTimerMinutes = MutableStateFlow(prefs.getInt("sleep_timer", 0))
-    val sleepTimerMinutes: StateFlow<Int> = _sleepTimerMinutes.asStateFlow()
-    fun setSleepTimerMinutes(m: Int) { prefs.edit().putInt("sleep_timer", m).apply(); _sleepTimerMinutes.value = m }
+    // ─── Sleep timer ─────────────────────────────────────────────────
+    val sleepTimerMinutes = MutableStateFlow(prefs.getInt("sleep_timer", 30))
+    fun setSleepTimerMinutes(m: Int) {
+        prefs.edit().putInt("sleep_timer", m).apply(); sleepTimerMinutes.value = m
+    }
+
+    init {
+        migrateLegacyPrefs()
+    }
+
+    /** One-shot migration of pre-1.0 settings so nobody loses their setup. */
+    private fun migrateLegacyPrefs() {
+        if (prefs.getBoolean("migrated_v2", false)) return
+        val editor = prefs.edit()
+        if (!prefs.contains("src_soundcloud") && prefs.contains("src_sc")) {
+            editor.putBoolean("src_soundcloud", prefs.getBoolean("src_sc", true))
+        }
+        if (!prefs.contains("src_youtube")) {
+            val legacy = prefs.getBoolean("src_yt", true) || prefs.getBoolean("src_ytm", true)
+            editor.putBoolean("src_youtube", legacy)
+        }
+        editor.putBoolean("migrated_v2", true).apply()
+        sourceSoundcloud.value = prefs.getBoolean("src_soundcloud", true)
+        sourceYoutube.value = prefs.getBoolean("src_youtube", true)
+    }
+
+    private fun putBoolean(key: String, flow: MutableStateFlow<Boolean>, value: Boolean) {
+        prefs.edit().putBoolean(key, value).apply(); flow.value = value
+    }
+
+    private fun putString(key: String, flow: MutableStateFlow<String>, value: String) {
+        prefs.edit().putString(key, value).apply(); flow.value = value
+    }
 
     companion object {
-        val EQ_PRESETS = listOf("flat", "bass_boost", "treble_boost", "vocal", "electronic", "rock", "pop", "jazz", "classical")
-        val AUDIO_QUALITIES = listOf("low", "normal", "high", "very_high")
-        val ACCENT_COLORS = mapOf(
-            "red" to 0xFFFA2D48,
-            "blue" to 0xFF0A84FF,
-            "purple" to 0xFFBF5AF2,
-            "green" to 0xFF30D158,
-            "orange" to 0xFFFF9F0A,
-            "pink" to 0xFFFF375F,
-            "teal" to 0xFF64D2FF,
-            "indigo" to 0xFF5E5CE6
+        val EQ_PRESETS = listOf(
+            "flat", "bass_boost", "treble_boost", "vocal", "electronic", "rock", "pop", "jazz", "classical"
         )
-        val PLAYBACK_SPEEDS = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f)
+        val CROSSFADE_OPTIONS = listOf(0, 3, 6, 9, 12)
+        val PLAYBACK_SPEEDS = listOf(0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
+
+        fun label(id: String): String =
+            id.split("_").joinToString(" ") { it.replaceFirstChar(Char::uppercase) }
     }
 }
